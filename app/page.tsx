@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { CarParams, SimConfig, SimResults, DEFAULT_CARS, DEFAULT_CONFIG } from '@/lib/types';
 import { runSimulation } from '@/lib/simulation';
+import { PricePoint, HISTORICAL_PRICES } from '@/lib/historical-data';
 import ParameterPanel from '@/components/ParameterPanel';
 import ResultsSummary from '@/components/ResultsSummary';
 import SensitivityTable from '@/components/SensitivityTable';
@@ -11,37 +12,95 @@ import TcoDistribution from '@/components/charts/TcoDistribution';
 import CumulativeCost from '@/components/charts/CumulativeCost';
 import BreakevenChart from '@/components/charts/BreakevenChart';
 import AnnualCostChart from '@/components/charts/AnnualCostChart';
-import { HISTORICAL_PRICES } from '@/lib/historical-data';
+
+function Spinner({ text }: { text: string }) {
+  return (
+    <div className="flex flex-col items-center gap-4 py-8">
+      <div className="relative w-12 h-12">
+        <div className="absolute inset-0 rounded-full border-4 border-gray-200 dark:border-gray-700" />
+        <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-600 animate-spin" />
+      </div>
+      <p className="text-sm text-gray-500">{text}</p>
+    </div>
+  );
+}
 
 export default function Home() {
   const [cars, setCars] = useState<CarParams[]>(DEFAULT_CARS);
   const [config, setConfig] = useState<SimConfig>(DEFAULT_CONFIG);
   const [results, setResults] = useState<SimResults | null>(null);
   const [running, setRunning] = useState(false);
+  const [prices, setPrices] = useState<PricePoint[]>(HISTORICAL_PRICES);
+  const [dataSource, setDataSource] = useState<'embedded' | 'live'>('embedded');
+  const [loadingPrices, setLoadingPrices] = useState(true);
+  const pricesRef = useRef(prices);
+  pricesRef.current = prices;
 
   const run = useCallback(() => {
     setRunning(true);
-    // Use requestAnimationFrame to let the UI update before blocking
     requestAnimationFrame(() => {
-      const r = runSimulation(cars, config);
+      const r = runSimulation(cars, config, 42, pricesRef.current);
       setResults(r);
       setRunning(false);
     });
   }, [cars, config]);
 
-  // Run on first mount
-  useEffect(() => { run(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Fetch live prices on mount, then run simulation
+  useEffect(() => {
+    let cancelled = false;
 
-  const lastPrice = HISTORICAL_PRICES[HISTORICAL_PRICES.length - 1];
+    async function fetchPrices() {
+      try {
+        const res = await fetch('/api/prices');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (!cancelled && json.prices?.length > 0) {
+          setPrices(json.prices);
+          pricesRef.current = json.prices;
+          setDataSource('live');
+        }
+      } catch {
+        // Fall back to embedded data (already set as default)
+      } finally {
+        if (!cancelled) {
+          setLoadingPrices(false);
+        }
+      }
+    }
+
+    fetchPrices().then(() => {
+      if (!cancelled) {
+        // Run simulation after prices are loaded
+        setRunning(true);
+        requestAnimationFrame(() => {
+          const r = runSimulation(DEFAULT_CARS, DEFAULT_CONFIG, 42, pricesRef.current);
+          setResults(r);
+          setRunning(false);
+        });
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  const lastPrice = prices[prices.length - 1];
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Header */}
       <header className="bg-white dark:bg-gray-900 border-b shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold">Fuel vs Electric Car</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">Fuel vs Electric Car</h1>
+            {dataSource === 'live' && (
+              <span className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 px-2 py-0.5 rounded-full">
+                Live data
+              </span>
+            )}
+          </div>
           <p className="text-sm text-gray-500">
             Monte Carlo simulation &middot; Italy &middot; Calibrated on EC Oil Bulletin data
+            {dataSource === 'live' && ` (${prices.length} observations)`}
           </p>
         </div>
       </header>
@@ -64,6 +123,19 @@ export default function Home() {
 
           {/* Main: Results */}
           <main className="flex-1 space-y-6">
+            {loadingPrices && !results && (
+              <div className="bg-white dark:bg-gray-900 rounded-xl shadow p-12">
+                <Spinner text="Fetching latest fuel prices from EC Oil Bulletin..." />
+              </div>
+            )}
+
+            {/* Overlay spinner when re-running with existing results */}
+            {running && results && (
+              <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm rounded-xl shadow p-6 sticky top-6 z-10">
+                <Spinner text={`Running ${config.nSimulations.toLocaleString()} simulations...`} />
+              </div>
+            )}
+
             {results && (
               <>
                 {/* Summary cards */}
@@ -124,7 +196,8 @@ export default function Home() {
                 <div className="text-xs text-gray-400 text-center py-4 space-y-1">
                   <p>
                     Data: European Commission Weekly Oil Bulletin ({results.dataPoints} weekly observations, {results.dateRange}).
-                    Electricity: ARERA Q1 2026 reference rate.
+                    {dataSource === 'live' ? ' (live)' : ' (embedded snapshot)'}
+                    {' '}Electricity: ARERA Q1 2026 reference rate.
                   </p>
                   <p>
                     Model: Geometric Brownian Motion (correlated fuels, independent electricity).
@@ -134,7 +207,7 @@ export default function Home() {
               </>
             )}
 
-            {!results && !running && (
+            {!results && !running && !loadingPrices && (
               <div className="bg-white dark:bg-gray-900 rounded-xl shadow p-12 text-center text-gray-500">
                 Click &ldquo;Run Simulation&rdquo; to start
               </div>

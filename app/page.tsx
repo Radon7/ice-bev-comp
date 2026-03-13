@@ -213,9 +213,9 @@ export default function Home() {
               </div>
             )}
 
-            {running && !results && (
-              <div className="bg-white dark:bg-gray-900 rounded-xl shadow p-12 text-center text-gray-500">
-                Running simulation...
+            {running && !results && !loadingPrices && (
+              <div className="bg-white dark:bg-gray-900 rounded-xl shadow p-12">
+                <Spinner text={`Running ${config.nSimulations.toLocaleString()} simulations...`} />
               </div>
             )}
           </main>

@@ -6,7 +6,7 @@
  */
 
 import { CarParams, SimConfig, SimResults, TcoStats, PercentileBands } from './types';
-import { HISTORICAL_PRICES } from './historical-data';
+import { PricePoint, HISTORICAL_PRICES } from './historical-data';
 
 // ── Seeded PRNG (Mulberry32) ────────────────────────────────────────────────
 
@@ -150,11 +150,13 @@ export function runSimulation(
   cars: CarParams[],
   config: SimConfig,
   seed: number = 42,
+  prices?: PricePoint[],
 ): SimResults {
-  // 1. Load historical data
-  const euro95Prices = HISTORICAL_PRICES.map(p => p.euro95);
-  const dieselPrices = HISTORICAL_PRICES.map(p => p.diesel);
-  const n = HISTORICAL_PRICES.length;
+  // 1. Load historical data (live prices if provided, else embedded snapshot)
+  const priceData = prices && prices.length > 0 ? prices : HISTORICAL_PRICES;
+  const euro95Prices = priceData.map(p => p.euro95);
+  const dieselPrices = priceData.map(p => p.diesel);
+  const n = priceData.length;
 
   // 2. Calibrate GBM
   const calE95 = calibrateGBM(euro95Prices);
@@ -425,6 +427,6 @@ export function runSimulation(
     sensitivityEvPrice,
     sensitivityElecPrice,
     dataPoints: n,
-    dateRange: `${HISTORICAL_PRICES[0].date} to ${HISTORICAL_PRICES[n - 1].date}`,
+    dateRange: `${priceData[0].date} to ${priceData[n - 1].date}`,
   };
 }

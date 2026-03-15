@@ -38,11 +38,19 @@ export default function Home() {
 
   const run = useCallback(() => {
     setRunning(true);
-    requestAnimationFrame(() => {
+    // setTimeout gives React a tick to paint the spinner before heavy computation.
+    // We enforce a minimum visible duration so the user sees feedback.
+    const minDuration = 400; // ms
+    const start = performance.now();
+    setTimeout(() => {
       const r = runSimulation(cars, config, 42, pricesRef.current);
-      setResults(r);
-      setRunning(false);
-    });
+      const elapsed = performance.now() - start;
+      const remaining = Math.max(0, minDuration - elapsed);
+      setTimeout(() => {
+        setResults(r);
+        setRunning(false);
+      }, remaining);
+    }, 50);
   }, [cars, config]);
 
   // Fetch live prices on mount, then run simulation
@@ -129,15 +137,14 @@ export default function Home() {
               </div>
             )}
 
-            {/* Overlay spinner when re-running with existing results */}
-            {running && results && (
-              <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm rounded-xl shadow p-6 sticky top-6 z-10">
-                <Spinner text={`Running ${config.nSimulations.toLocaleString()} simulations...`} />
-              </div>
-            )}
-
             {results && (
-              <>
+              <div className="relative space-y-6">
+                {/* Overlay spinner when re-running */}
+                {running && (
+                  <div className="absolute inset-0 z-10 flex items-start justify-center pt-24 bg-gray-950/60 backdrop-blur-sm rounded-xl">
+                    <Spinner text={`Running ${config.nSimulations.toLocaleString()} simulations...`} />
+                  </div>
+                )}
                 {/* Summary cards */}
                 <div className="bg-white dark:bg-gray-900 rounded-xl shadow p-5">
                   <ResultsSummary results={results} horizonYears={config.horizonYears} annualKm={config.annualKm} />
@@ -204,7 +211,7 @@ export default function Home() {
                     {config.nSimulations.toLocaleString()} Monte Carlo simulations, {config.horizonYears}-year horizon.
                   </p>
                 </div>
-              </>
+              </div>
             )}
 
             {!results && !running && !loadingPrices && (

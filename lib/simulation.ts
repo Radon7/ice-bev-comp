@@ -347,12 +347,7 @@ export function runSimulation(
 
       grossSpending.push(grossSpending[grossSpending.length - 1] + annualFuel + annualFixed);
     }
-    // Net cost = gross spending - residual value at each year
-    const yearly = grossSpending.map((spending, year) => {
-      const residual = car.purchasePrice * (1 - car.depreciationRate) ** year;
-      return spending - residual;
-    });
-    cumulativeCost[car.name] = yearly;
+    cumulativeCost[car.name] = grossSpending;
   }
 
   // 10. Annual energy cost (median fuel price at year-end)

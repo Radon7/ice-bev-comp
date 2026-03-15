@@ -309,7 +309,8 @@ export function runSimulation(
   // 9. Cumulative cost over time (median)
   const cumulativeCost: Record<string, number[]> = {};
   for (const car of cars) {
-    const yearly = [car.purchasePrice];
+    // Track gross spending (purchase + fuel + fixed costs) separately
+    const grossSpending = [car.purchasePrice];
     for (let year = 1; year <= config.horizonYears; year++) {
       const weekStart = (year - 1) * weeksPerYear + 1;
       const weekEnd = year * weeksPerYear + 1;
@@ -344,11 +345,13 @@ export function runSimulation(
         annualFixed += car.annualTax;
       }
 
-      yearly.push(yearly[yearly.length - 1] + annualFuel + annualFixed);
+      grossSpending.push(grossSpending[grossSpending.length - 1] + annualFuel + annualFixed);
     }
-    // Subtract residual at end
-    const residual = car.purchasePrice * (1 - car.depreciationRate) ** config.horizonYears;
-    yearly[yearly.length - 1] -= residual;
+    // Net cost = gross spending - residual value at each year
+    const yearly = grossSpending.map((spending, year) => {
+      const residual = car.purchasePrice * (1 - car.depreciationRate) ** year;
+      return spending - residual;
+    });
     cumulativeCost[car.name] = yearly;
   }
 

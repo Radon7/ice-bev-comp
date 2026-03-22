@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getPrices, getLatestDate, upsertPrices } from '@/lib/price-store';
 import { fetchAllECPrices, fetchCountryPrices } from '@/lib/ec-fetcher';
+import { EU_COUNTRIES } from '@/lib/eurostat-fetcher';
 import { HISTORICAL_PRICES } from '@/lib/historical-data';
+
+const VALID_COUNTRIES = new Set(EU_COUNTRIES);
 
 /** Maximum data age before we consider it stale and attempt a live refresh. */
 const STALE_DAYS = 8;
@@ -26,6 +29,13 @@ function isStale(latestDate: string | null): boolean {
  */
 export async function GET(request: NextRequest) {
   const country = request.nextUrl.searchParams.get('country')?.toUpperCase() || 'IT';
+
+  if (!VALID_COUNTRIES.has(country)) {
+    return NextResponse.json(
+      { error: 'Invalid country code' },
+      { status: 400 },
+    );
+  }
 
   // --- Tier 1: Read from database ---
   try {

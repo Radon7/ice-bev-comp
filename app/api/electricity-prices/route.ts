@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getElectricityPrices, upsertElectricityPrices } from '@/lib/price-store';
-import { fetchElectricityPrices, fetchAllElectricityPrices } from '@/lib/eurostat-fetcher';
+import { fetchElectricityPrices, fetchAllElectricityPrices, EU_COUNTRIES } from '@/lib/eurostat-fetcher';
 import { HISTORICAL_ELECTRICITY_PRICES } from '@/lib/historical-electricity-data';
+
+const VALID_COUNTRIES = new Set(EU_COUNTRIES);
 
 /**
  * GET /api/electricity-prices?country=IT
@@ -17,6 +19,13 @@ import { HISTORICAL_ELECTRICITY_PRICES } from '@/lib/historical-electricity-data
  */
 export async function GET(request: NextRequest) {
   const country = request.nextUrl.searchParams.get('country')?.toUpperCase() || 'IT';
+
+  if (!VALID_COUNTRIES.has(country)) {
+    return NextResponse.json(
+      { error: 'Invalid country code' },
+      { status: 400 },
+    );
+  }
 
   // --- Tier 1: Read from database ---
   try {

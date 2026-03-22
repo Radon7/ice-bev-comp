@@ -70,6 +70,26 @@ Tracks refresh attempts for monitoring.
 | `error` | TEXT | Error message if the refresh failed (NULL on success) |
 | `source` | TEXT | `'fuel_prices'` or `'electricity_prices'` (defaults to `'fuel_prices'`) |
 
+### api_keys
+
+Stores API keys for external consumers of the read endpoints.
+
+**Migration file**: `scripts/migrations/003_create_api_keys.sql`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | SERIAL | Primary key |
+| `name` | TEXT | Description of the consumer (e.g. "Mario's app") |
+| `key_hash` | TEXT | SHA-256 hash of the API key (unique) |
+| `created_at` | TIMESTAMPTZ | Row creation timestamp |
+| `revoked_at` | TIMESTAMPTZ | Soft-revoke timestamp (NULL if active) |
+| `last_used_at` | TIMESTAMPTZ | Last time the key was used |
+| `request_count` | BIGINT | Total requests made with this key |
+
+**Index**: `idx_api_keys_hash` on `(key_hash)` — fast lookup during authentication.
+
+Keys are created with `scripts/create-api-key.ts` and revoked by setting `revoked_at`. See [API Authentication](./api.md#authentication) for details.
+
 ## Data Statistics
 
 ### Fuel Prices
@@ -96,13 +116,20 @@ Go to your Vercel project dashboard → **Storage** tab → **Create Database** 
 
 ### 2. Run the schema migration
 
-In the Vercel Storage dashboard, click on your database → **SQL Editor**. Paste and run the contents of both migration files in order:
+In the Vercel Storage dashboard, click on your database → **SQL Editor**. Paste and run the contents of all migration files in order:
 1. `scripts/migrations/001_create_tables.sql` — creates `fuel_prices` and `refresh_log` tables
 2. `scripts/migrations/002_create_electricity_prices.sql` — creates `electricity_prices` table and adds `source` column to `refresh_log`
+3. `scripts/migrations/003_create_api_keys.sql` — creates `api_keys` table for external API consumers
 
-### 3. Set CRON_SECRET
+### 3. Set environment variables
 
-Go to **Settings** → **Environment Variables**. Vercel auto-generates `CRON_SECRET` for cron jobs. If it's not present, add it manually with any secure random string.
+Go to **Settings** → **Environment Variables**:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `CRON_SECRET` | Yes | Auth token for cron refresh endpoints. Vercel auto-generates it; add manually if missing |
+| `API_RATE_LIMIT` | No | Max requests per minute per API key (default: `100`) |
+| `ALLOWED_ORIGINS` | No | Comma-separated allowed CORS origins (default: `*`) |
 
 ### 4. Deploy
 
@@ -289,6 +316,11 @@ ORDER BY latest_date DESC;
 | `app/api/electricity-prices/refresh/route.ts` | Electricity price cron endpoint (monthly, protected by CRON_SECRET) |
 | `scripts/migrations/001_create_tables.sql` | Database schema (fuel_prices + refresh_log) |
 | `scripts/migrations/002_create_electricity_prices.sql` | Database schema (electricity_prices + refresh_log source column) |
+| `scripts/migrations/003_create_api_keys.sql` | Database schema (api_keys for external API consumers) |
 | `scripts/migrate.ts` | Migration runner |
+| `scripts/create-api-key.ts` | CLI to create API keys for external consumers |
 | `scripts/inspect-bulletin.ts` | Dev tool: inspect XLSX structure |
+| `lib/api-keys.ts` | API key generation, hashing, and validation |
+| `lib/api-auth.ts` | Request authentication (same-origin bypass, key validation, rate limiting) |
+| `middleware.ts` | CORS headers and preflight handling for API routes |
 | `vercel.json` | Cron schedule definitions (weekly fuel + monthly electricity) |

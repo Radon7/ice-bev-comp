@@ -49,6 +49,10 @@ POSTGRES_URL_NON_POOLING=postgres://postgres:postgres@localhost:5432/comp_benzin
 
 # Auth token for the /api/prices/refresh endpoint
 CRON_SECRET=local-dev-secret
+
+# API rate limiting and CORS (optional)
+# API_RATE_LIMIT=100
+# ALLOWED_ORIGINS=*
 ```
 
 If you skip the database, you don't need `.env.local` at all — the app works without it.
@@ -61,7 +65,7 @@ Skip this step if you're not using the database.
 POSTGRES_URL=postgres://postgres:postgres@localhost:5432/comp_benzina npx tsx scripts/migrate.ts
 ```
 
-This creates the `fuel_prices`, `electricity_prices`, and `refresh_log` tables.
+This creates the `fuel_prices`, `electricity_prices`, `refresh_log`, and `api_keys` tables.
 
 ## 5. Start the dev server
 
@@ -94,35 +98,46 @@ You should see responses like:
 
 ## 7. Verify everything works
 
+The API requires authentication for external requests. Create a test API key first:
+
+```bash
+POSTGRES_URL=postgres://postgres:postgres@localhost:5432/comp_benzina \
+  npx tsx scripts/create-api-key.ts "Local Test"
+```
+
+Then test with the key:
+
 ```bash
 # Fuel prices — Italy (default)
-curl -s http://localhost:3000/api/prices | python3 -c "
+curl -s -H "X-API-Key: <your-key>" http://localhost:3000/api/prices | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 print(f'Source: {d[\"source\"]}, Country: {d[\"country\"]}, Data points: {d[\"count\"]}')
 "
 
 # Fuel prices — another country
-curl -s "http://localhost:3000/api/prices?country=DE" | python3 -c "
+curl -s -H "X-API-Key: <your-key>" "http://localhost:3000/api/prices?country=DE" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 print(f'Source: {d[\"source\"]}, Country: {d[\"country\"]}, Data points: {d[\"count\"]}')
 "
 
 # Electricity prices — Italy (default)
-curl -s http://localhost:3000/api/electricity-prices | python3 -c "
+curl -s -H "X-API-Key: <your-key>" http://localhost:3000/api/electricity-prices | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 print(f'Source: {d[\"source\"]}, Country: {d[\"country\"]}, Data points: {d[\"count\"]}')
 "
 
 # Electricity prices — another country
-curl -s "http://localhost:3000/api/electricity-prices?country=DE" | python3 -c "
+curl -s -H "X-API-Key: <your-key>" "http://localhost:3000/api/electricity-prices?country=DE" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 print(f'Source: {d[\"source\"]}, Country: {d[\"country\"]}, Data points: {d[\"count\"]}')
 "
 ```
+
+Note: The frontend (same-origin requests from the browser) works without an API key.
 
 Expected output with database:
 

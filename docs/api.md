@@ -1,5 +1,51 @@
 # API Reference
 
+## Authentication
+
+The read endpoints (`/api/prices`, `/api/electricity-prices`) require authentication for external consumers. Same-origin requests (the frontend) bypass auth automatically.
+
+### API Key Authentication
+
+External consumers must send an `X-API-Key` header:
+
+```bash
+curl -H "X-API-Key: cbk_..." https://your-app.vercel.app/api/prices?country=IT
+```
+
+Requests without a valid key return `401 Unauthorized`.
+
+### Creating API Keys
+
+Use the provisioning script to create keys:
+
+```bash
+POSTGRES_URL="<connection-string>" npx tsx scripts/create-api-key.ts "Consumer Name"
+```
+
+The raw key is printed once and cannot be recovered. Keys are stored as SHA-256 hashes in the `api_keys` table.
+
+### Revoking API Keys
+
+```sql
+UPDATE api_keys SET revoked_at = now() WHERE name = 'Consumer Name';
+```
+
+### Rate Limiting
+
+External requests are rate-limited to 100 requests per minute per API key (configurable via `API_RATE_LIMIT` env var). Exceeding the limit returns `429 Too Many Requests` with a `Retry-After` header.
+
+Same-origin requests are not rate-limited.
+
+### CORS
+
+API endpoints include CORS headers for cross-origin access. By default all origins are allowed (`Access-Control-Allow-Origin: *`). Configure `ALLOWED_ORIGINS` env var with a comma-separated list to restrict.
+
+### Caching
+
+Successful responses include `Cache-Control: public, max-age=3600, s-maxage=86400` (1 hour client-side, 24 hours CDN). Fuel prices update weekly and electricity prices monthly, so aggressive caching is safe.
+
+---
+
 ## GET /api/prices
 
 Returns weekly fuel prices (Euro 95 + Diesel) for any EU country, with a 3-tier fallback strategy.

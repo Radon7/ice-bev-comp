@@ -1,6 +1,14 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import {
+  AppBar, Toolbar, Typography, Chip, Container, Box, Paper,
+  CircularProgress, Backdrop, Stack, IconButton,
+} from '@mui/material';
+import Brightness4Icon from '@mui/icons-material/Brightness4';
+import Brightness7Icon from '@mui/icons-material/Brightness7';
+import { useTheme } from '@mui/material/styles';
+import { useColorMode } from '@/components/ThemeRegistry';
 import { CarParams, SimConfig, SimResults, DEFAULT_CARS, DEFAULT_CONFIG } from '@/lib/types';
 import { runSimulation } from '@/lib/simulation';
 import { PricePoint, HISTORICAL_PRICES } from '@/lib/historical-data';
@@ -13,19 +21,9 @@ import CumulativeCost from '@/components/charts/CumulativeCost';
 import BreakevenChart from '@/components/charts/BreakevenChart';
 import AnnualCostChart from '@/components/charts/AnnualCostChart';
 
-function Spinner({ text }: { text: string }) {
-  return (
-    <div className="flex flex-col items-center gap-4 py-8">
-      <div className="relative w-12 h-12">
-        <div className="absolute inset-0 rounded-full border-4 border-gray-200 dark:border-gray-700" />
-        <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-600 animate-spin" />
-      </div>
-      <p className="text-sm text-gray-500">{text}</p>
-    </div>
-  );
-}
-
 export default function Home() {
+  const theme = useTheme();
+  const { toggleColorMode } = useColorMode();
   const [cars, setCars] = useState<CarParams[]>(DEFAULT_CARS);
   const [config, setConfig] = useState<SimConfig>(DEFAULT_CONFIG);
   const [results, setResults] = useState<SimResults | null>(null);
@@ -38,9 +36,7 @@ export default function Home() {
 
   const run = useCallback(() => {
     setRunning(true);
-    // setTimeout gives React a tick to paint the spinner before heavy computation.
-    // We enforce a minimum visible duration so the user sees feedback.
-    const minDuration = 400; // ms
+    const minDuration = 400;
     const start = performance.now();
     setTimeout(() => {
       const r = runSimulation(cars, config, 42, pricesRef.current);
@@ -53,7 +49,6 @@ export default function Home() {
     }, 50);
   }, [cars, config]);
 
-  // Fetch live prices on mount, then run simulation
   useEffect(() => {
     let cancelled = false;
 
@@ -68,17 +63,14 @@ export default function Home() {
           setDataSource('live');
         }
       } catch {
-        // Fall back to embedded data (already set as default)
+        // Fall back to embedded data
       } finally {
-        if (!cancelled) {
-          setLoadingPrices(false);
-        }
+        if (!cancelled) setLoadingPrices(false);
       }
     }
 
     fetchPrices().then(() => {
       if (!cancelled) {
-        // Run simulation after prices are loaded
         setRunning(true);
         requestAnimationFrame(() => {
           const r = runSimulation(DEFAULT_CARS, DEFAULT_CONFIG, 42, pricesRef.current);
@@ -94,30 +86,40 @@ export default function Home() {
   const lastPrice = prices[prices.length - 1];
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Header */}
-      <header className="bg-white dark:bg-gray-900 border-b shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">Fuel vs Electric Car</h1>
+    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+      {/* App Bar */}
+      <AppBar position="sticky" color="default" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Toolbar>
+          <Stack direction="row" alignItems="center" spacing={1.5} sx={{ flexGrow: 1 }}>
+            <Typography variant="h6" noWrap>Fuel vs Electric Car</Typography>
             {dataSource === 'live' && (
-              <span className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 px-2 py-0.5 rounded-full">
-                Live data
-              </span>
+              <Chip label="Live data" color="success" size="small" />
             )}
-          </div>
-          <p className="text-sm text-gray-500">
+          </Stack>
+          <IconButton onClick={toggleColorMode} color="inherit">
+            {theme.palette.mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
+          </IconButton>
+        </Toolbar>
+        <Box sx={{ px: 3, pb: 1 }}>
+          <Typography variant="caption" color="text.secondary">
             Monte Carlo simulation &middot; Italy &middot; Calibrated on EC Oil Bulletin data
             {dataSource === 'live' && ` (${prices.length} observations)`}
-          </p>
-        </div>
-      </header>
+          </Typography>
+        </Box>
+      </AppBar>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Sidebar: Parameters */}
-          <aside className="lg:w-80 shrink-0">
-            <div className="bg-white dark:bg-gray-900 rounded-xl shadow p-5 sticky top-6">
+      <Container maxWidth="xl" sx={{ py: 3 }}>
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: 3, alignItems: 'flex-start' }}>
+          {/* Sidebar */}
+          <Box sx={{
+            width: { lg: 320 },
+            flexShrink: 0,
+            alignSelf: 'flex-start',
+            position: { lg: 'sticky' },
+            top: { lg: 80 },
+            maxHeight: { lg: 'calc(100vh - 100px)' },
+          }}>
+            <Paper sx={{ p: 3, maxHeight: { lg: 'calc(100vh - 100px)' }, overflowY: 'auto' }}>
               <ParameterPanel
                 cars={cars}
                 config={config}
@@ -126,108 +128,130 @@ export default function Home() {
                 onRun={run}
                 running={running}
               />
-            </div>
-          </aside>
+            </Paper>
+          </Box>
 
-          {/* Main: Results */}
-          <main className="flex-1 space-y-6">
+          {/* Main content */}
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            {/* Loading prices spinner */}
             {loadingPrices && !results && (
-              <div className="bg-white dark:bg-gray-900 rounded-xl shadow p-12">
-                <Spinner text="Fetching latest fuel prices from EC Oil Bulletin..." />
-              </div>
+              <Paper sx={{ p: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <CircularProgress />
+                <Typography variant="body2" color="text.secondary">
+                  Fetching latest fuel prices from EC Oil Bulletin...
+                </Typography>
+              </Paper>
             )}
 
+            {/* Results */}
             {results && (
-              <div className="relative space-y-6">
-                {/* Overlay spinner when re-running */}
-                {running && (
-                  <div className="absolute inset-0 z-10 flex items-start justify-center pt-24 bg-gray-950/60 backdrop-blur-sm rounded-xl">
-                    <Spinner text={`Running ${config.nSimulations.toLocaleString()} simulations...`} />
-                  </div>
-                )}
-                {/* Summary cards */}
-                <div className="bg-white dark:bg-gray-900 rounded-xl shadow p-5">
-                  <ResultsSummary results={results} horizonYears={config.horizonYears} annualKm={config.annualKm} />
-                </div>
+              <Box sx={{ position: 'relative' }}>
+                {/* Running overlay */}
+                <Backdrop
+                  open={running}
+                  sx={{
+                    position: 'absolute',
+                    zIndex: 10,
+                    borderRadius: 3,
+                    bgcolor: 'rgba(0,0,0,0.6)',
+                    backdropFilter: 'blur(4px)',
+                    flexDirection: 'column',
+                    gap: 2,
+                  }}
+                >
+                  <CircularProgress />
+                  <Typography variant="body2" color="white">
+                    Running {config.nSimulations.toLocaleString()} simulations...
+                  </Typography>
+                </Backdrop>
 
-                {/* Price simulations */}
-                <div className="bg-white dark:bg-gray-900 rounded-xl shadow p-5">
-                  <h2 className="text-lg font-bold mb-4">Price Simulations</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <PriceSimChart
-                      title="Euro 95" bands={results.pathsE95}
-                      currentPrice={lastPrice.euro95} horizonYears={config.horizonYears}
-                      color="#2196F3" unit="/L"
+                <Stack spacing={3}>
+                  {/* Summary */}
+                  <Paper sx={{ p: 3 }}>
+                    <ResultsSummary results={results} horizonYears={config.horizonYears} annualKm={config.annualKm} />
+                  </Paper>
+
+                  {/* Price simulations */}
+                  <Paper sx={{ p: 3 }}>
+                    <Typography variant="h6" gutterBottom>Price Simulations</Typography>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
+                      <PriceSimChart
+                        title="Euro 95" bands={results.pathsE95}
+                        currentPrice={lastPrice.euro95} horizonYears={config.horizonYears}
+                        color="#2196F3" unit="/L"
+                      />
+                      <PriceSimChart
+                        title="Diesel" bands={results.pathsDiesel}
+                        currentPrice={lastPrice.diesel} horizonYears={config.horizonYears}
+                        color="#FF9800" unit="/L"
+                      />
+                      <PriceSimChart
+                        title="Electricity" bands={results.pathsElec}
+                        currentPrice={config.electricityPrice} horizonYears={config.horizonYears}
+                        color="#4CAF50" unit="/kWh"
+                      />
+                    </Box>
+                  </Paper>
+
+                  {/* TCO charts */}
+                  <Paper sx={{ p: 3 }}>
+                    <Typography variant="h6" gutterBottom>Total Cost of Ownership</Typography>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
+                      <TcoDistribution tco={results.tco} horizonYears={config.horizonYears} annualKm={config.annualKm} />
+                      <CumulativeCost cumulativeCost={results.cumulativeCost} horizonYears={config.horizonYears} />
+                    </Box>
+                  </Paper>
+
+                  {/* Breakeven & Annual */}
+                  <Paper sx={{ p: 3 }}>
+                    <Typography variant="h6" gutterBottom>Breakeven &amp; Annual Costs</Typography>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 2 }}>
+                      <BreakevenChart breakeven={results.breakeven} currentKm={config.annualKm} />
+                      <AnnualCostChart annualEnergyCost={results.annualEnergyCost} horizonYears={config.horizonYears} />
+                    </Box>
+                  </Paper>
+
+                  {/* Sensitivity */}
+                  <Paper sx={{ p: 3 }}>
+                    <Typography variant="h6" gutterBottom>Sensitivity Analysis</Typography>
+                    <SensitivityTable
+                      sensitivityEvPrice={results.sensitivityEvPrice}
+                      sensitivityElecPrice={results.sensitivityElecPrice}
                     />
-                    <PriceSimChart
-                      title="Diesel" bands={results.pathsDiesel}
-                      currentPrice={lastPrice.diesel} horizonYears={config.horizonYears}
-                      color="#FF9800" unit="/L"
-                    />
-                    <PriceSimChart
-                      title="Electricity" bands={results.pathsElec}
-                      currentPrice={config.electricityPrice} horizonYears={config.horizonYears}
-                      color="#4CAF50" unit="/kWh"
-                    />
-                  </div>
-                </div>
+                  </Paper>
 
-                {/* TCO charts */}
-                <div className="bg-white dark:bg-gray-900 rounded-xl shadow p-5">
-                  <h2 className="text-lg font-bold mb-4">Total Cost of Ownership</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <TcoDistribution tco={results.tco} horizonYears={config.horizonYears} annualKm={config.annualKm} />
-                    <CumulativeCost cumulativeCost={results.cumulativeCost} horizonYears={config.horizonYears} />
-                  </div>
-                </div>
-
-                {/* Breakeven + Annual cost */}
-                <div className="bg-white dark:bg-gray-900 rounded-xl shadow p-5">
-                  <h2 className="text-lg font-bold mb-4">Breakeven & Annual Costs</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <BreakevenChart breakeven={results.breakeven} currentKm={config.annualKm} />
-                    <AnnualCostChart annualEnergyCost={results.annualEnergyCost} horizonYears={config.horizonYears} />
-                  </div>
-                </div>
-
-                {/* Sensitivity */}
-                <div className="bg-white dark:bg-gray-900 rounded-xl shadow p-5">
-                  <h2 className="text-lg font-bold mb-4">Sensitivity Analysis</h2>
-                  <SensitivityTable
-                    sensitivityEvPrice={results.sensitivityEvPrice}
-                    sensitivityElecPrice={results.sensitivityElecPrice}
-                  />
-                </div>
-
-                {/* Footer */}
-                <div className="text-xs text-gray-400 text-center py-4 space-y-1">
-                  <p>
+                  {/* Footer */}
+                  <Typography variant="caption" color="text.secondary" align="center" component="div" sx={{ py: 2 }}>
                     Data: European Commission Weekly Oil Bulletin ({results.dataPoints} weekly observations, {results.dateRange}).
                     {dataSource === 'live' ? ' (live)' : ' (embedded snapshot)'}
                     {' '}Electricity: ARERA Q1 2026 reference rate.
-                  </p>
-                  <p>
+                    <br />
                     Model: Geometric Brownian Motion (correlated fuels, independent electricity).
-                    {config.nSimulations.toLocaleString()} Monte Carlo simulations, {config.horizonYears}-year horizon.
-                  </p>
-                </div>
-              </div>
+                    {' '}{config.nSimulations.toLocaleString()} Monte Carlo simulations, {config.horizonYears}-year horizon.
+                  </Typography>
+                </Stack>
+              </Box>
             )}
 
             {!results && !running && !loadingPrices && (
-              <div className="bg-white dark:bg-gray-900 rounded-xl shadow p-12 text-center text-gray-500">
-                Click &ldquo;Run Simulation&rdquo; to start
-              </div>
+              <Paper sx={{ p: 6, textAlign: 'center' }}>
+                <Typography color="text.secondary">
+                  Click &ldquo;Run Simulation&rdquo; to start
+                </Typography>
+              </Paper>
             )}
 
             {running && !results && !loadingPrices && (
-              <div className="bg-white dark:bg-gray-900 rounded-xl shadow p-12">
-                <Spinner text={`Running ${config.nSimulations.toLocaleString()} simulations...`} />
-              </div>
+              <Paper sx={{ p: 6, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <CircularProgress />
+                <Typography variant="body2" color="text.secondary">
+                  Running {config.nSimulations.toLocaleString()} simulations...
+                </Typography>
+              </Paper>
             )}
-          </main>
-        </div>
-      </div>
-    </div>
+          </Box>
+        </Box>
+      </Container>
+    </Box>
   );
 }

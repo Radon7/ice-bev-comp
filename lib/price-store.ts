@@ -1,5 +1,7 @@
 import { sql } from './db';
 import type { FuelPriceRow } from './ec-fetcher';
+import type { ElectricityPriceRow } from './eurostat-fetcher';
+import type { ElectricityPricePoint } from './types';
 
 /** Result of querying prices for a single country. */
 export interface StoredPricePoint {
@@ -98,33 +100,113 @@ export async function upsertPrices(prices: FuelPriceRow[]): Promise<number> {
   return totalUpserted;
 }
 
+// ── Electricity Prices ──────────────────────────────────────────────
+
+/**
+ * Get electricity prices for a country from the database.
+ * Returns null if no data is found.
+ */
+export async function getElectricityPrices(
+  country: string,
+): Promise<ElectricityPricePoint[] | null> {
+  const { rows } = await sql`
+    SELECT date, price_eur_kwh
+    FROM electricity_prices
+    WHERE country = ${country}
+    ORDER BY date ASC
+  `;
+
+  if (rows.length === 0) return null;
+
+  return rows.map((row) => ({
+    date: String(row.date),
+    price: Number(row.price_eur_kwh),
+  }));
+}
+
+/**
+ * Get the most recent electricity data date for a country.
+ */
+export async function getLatestElectricityDate(
+  country: string,
+): Promise<string | null> {
+  const { rows } = await sql`
+    SELECT MAX(date) as max_date
+    FROM electricity_prices
+    WHERE country = ${country}
+  `;
+  if (!rows[0]?.max_date) return null;
+  return String(rows[0].max_date);
+}
+
+/**
+ * Bulk upsert electricity price rows into the database.
+ */
+export async function upsertElectricityPrices(
+  prices: ElectricityPriceRow[],
+): Promise<number> {
+  if (prices.length === 0) return 0;
+
+  const BATCH_SIZE = 500;
+  let totalUpserted = 0;
+
+  for (let i = 0; i < prices.length; i += BATCH_SIZE) {
+    const batch = prices.slice(i, i + BATCH_SIZE);
+
+    const values = batch
+      .map(
+        (p) => `('${p.date}', '${p.country}', ${p.priceEurKwh})`,
+      )
+      .join(',\n');
+
+    await sql.query(`
+      INSERT INTO electricity_prices (date, country, price_eur_kwh)
+      VALUES ${values}
+      ON CONFLICT (date, country)
+      DO UPDATE SET price_eur_kwh = EXCLUDED.price_eur_kwh
+    `);
+
+    totalUpserted += batch.length;
+  }
+
+  return totalUpserted;
+}
+
+// ── Refresh Logging ─────────────────────────────────────────────────
+
+type RefreshSource = 'fuel_prices' | 'electricity_prices';
+
 /** Log a refresh attempt. */
 export async function logRefresh(result: {
+  source?: RefreshSource;
   rowsUpserted?: number;
   error?: string;
 }): Promise<void> {
+  const source = result.source ?? 'fuel_prices';
   if (result.error) {
     await sql`
-      INSERT INTO refresh_log (completed_at, error)
-      VALUES (NOW(), ${result.error})
+      INSERT INTO refresh_log (completed_at, error, source)
+      VALUES (NOW(), ${result.error}, ${source})
     `;
   } else {
     await sql`
-      INSERT INTO refresh_log (completed_at, rows_upserted)
-      VALUES (NOW(), ${result.rowsUpserted ?? 0})
+      INSERT INTO refresh_log (completed_at, rows_upserted, source)
+      VALUES (NOW(), ${result.rowsUpserted ?? 0}, ${source})
     `;
   }
 }
 
-/** Get the latest successful refresh info. */
-export async function getLatestRefresh(): Promise<{
+/** Get the latest successful refresh info for a source. */
+export async function getLatestRefresh(
+  source: RefreshSource = 'fuel_prices',
+): Promise<{
   completedAt: string;
   rowsUpserted: number;
 } | null> {
   const { rows } = await sql`
     SELECT completed_at, rows_upserted
     FROM refresh_log
-    WHERE error IS NULL AND completed_at IS NOT NULL
+    WHERE error IS NULL AND completed_at IS NOT NULL AND source = ${source}
     ORDER BY completed_at DESC
     LIMIT 1
   `;

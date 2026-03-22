@@ -61,7 +61,7 @@ Skip this step if you're not using the database.
 POSTGRES_URL=postgres://postgres:postgres@localhost:5432/comp_benzina npx tsx scripts/migrate.ts
 ```
 
-This creates the `fuel_prices` and `refresh_log` tables.
+This creates the `fuel_prices`, `electricity_prices`, and `refresh_log` tables.
 
 ## 5. Start the dev server
 
@@ -75,38 +75,49 @@ Without a database, the first load takes a few seconds while it downloads the EC
 
 ## 6. Seed the database (optional)
 
-With the dev server running, trigger a full backfill of all 28 EU countries since 2005:
+With the dev server running, trigger a full backfill:
 
 ```bash
+# Fuel prices — all 28 EU countries since 2005 (~128K rows, 5-10s)
 curl -H "Authorization: Bearer local-dev-secret" http://localhost:3000/api/prices/refresh
+
+# Electricity prices — all 28 EU countries since 2008 (~950 rows, 2-3s)
+curl -H "Authorization: Bearer local-dev-secret" http://localhost:3000/api/electricity-prices/refresh
 ```
 
-This downloads the EC Oil Bulletin (~3 MB), parses all countries and fuel types, and inserts ~128K rows. Takes about 5-10 seconds.
-
-You should see a response like:
+You should see responses like:
 
 ```json
-{
-  "ok": true,
-  "rowsUpserted": 127951,
-  "countries": 28,
-  "totalParsed": 127951,
-  "durationMs": 4640
-}
+{ "ok": true, "rowsUpserted": 127951, "countries": 28, "durationMs": 4640 }
+{ "ok": true, "rowsUpserted": 952, "countries": 28, "durationMs": 2100 }
 ```
 
 ## 7. Verify everything works
 
 ```bash
-# Italy (default)
+# Fuel prices — Italy (default)
 curl -s http://localhost:3000/api/prices | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 print(f'Source: {d[\"source\"]}, Country: {d[\"country\"]}, Data points: {d[\"count\"]}')
 "
 
-# Another country
+# Fuel prices — another country
 curl -s "http://localhost:3000/api/prices?country=DE" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Source: {d[\"source\"]}, Country: {d[\"country\"]}, Data points: {d[\"count\"]}')
+"
+
+# Electricity prices — Italy (default)
+curl -s http://localhost:3000/api/electricity-prices | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Source: {d[\"source\"]}, Country: {d[\"country\"]}, Data points: {d[\"count\"]}')
+"
+
+# Electricity prices — another country
+curl -s "http://localhost:3000/api/electricity-prices?country=DE" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 print(f'Source: {d[\"source\"]}, Country: {d[\"country\"]}, Data points: {d[\"count\"]}')
@@ -118,12 +129,15 @@ Expected output with database:
 ```
 Source: database, Country: IT, Data points: 1057
 Source: database, Country: DE, Data points: 1058
+Source: database, Country: IT, Data points: 35
+Source: database, Country: DE, Data points: 34
 ```
 
 Expected output without database:
 
 ```
 Source: ec_oil_bulletin, Country: IT, Data points: 1057
+Source: eurostat_nrg_pc_204, Country: IT, Data points: 35
 ```
 
 ## Docker cheat sheet
@@ -138,9 +152,13 @@ docker start comp-benzina-db
 # Connect with psql for debugging
 docker exec -it comp-benzina-db psql -U postgres -d comp_benzina
 
-# Check row counts per country
+# Check fuel price row counts per country
 docker exec comp-benzina-db psql -U postgres -d comp_benzina \
   -c "SELECT country, COUNT(*) FROM fuel_prices GROUP BY country ORDER BY country;"
+
+# Check electricity price row counts per country
+docker exec comp-benzina-db psql -U postgres -d comp_benzina \
+  -c "SELECT country, COUNT(*) FROM electricity_prices GROUP BY country ORDER BY country;"
 
 # Reset everything (destroys all data)
 docker rm -f comp-benzina-db

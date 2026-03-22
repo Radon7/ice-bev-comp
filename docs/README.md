@@ -1,6 +1,6 @@
 # Fuel vs Electric TCO Simulator - Documentation
 
-A Monte Carlo simulation tool that compares the Total Cost of Ownership (TCO) of gasoline, diesel, and electric vehicles over a configurable time horizon. Supports all 28 EU countries with fuel price data from the EC Oil Bulletin stored in a Postgres database.
+A Monte Carlo simulation tool that compares the Total Cost of Ownership (TCO) of gasoline, diesel, and electric vehicles over a configurable time horizon. Supports all 28 EU countries with fuel prices from the EC Oil Bulletin and electricity prices from Eurostat, both stored in a Postgres database.
 
 ## Table of Contents
 
@@ -42,4 +42,4 @@ Open [http://localhost:3000](http://localhost:3000).
 | Charts | Recharts 3 |
 | Language | TypeScript 5 |
 | Database | Postgres (pg driver, Vercel Postgres / Neon compatible) |
-| Data Parsing | xlsx (for EC Oil Bulletin) |
+| Data Parsing | xlsx (EC Oil Bulletin) + Eurostat JSON API (electricity) |

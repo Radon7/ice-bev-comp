@@ -1,89 +1,74 @@
 import { NextResponse } from 'next/server';
-import { ElectricityPricePoint } from '@/lib/types';
+import type { NextRequest } from 'next/server';
+import { getElectricityPrices, upsertElectricityPrices } from '@/lib/price-store';
+import { fetchElectricityPrices, fetchAllElectricityPrices } from '@/lib/eurostat-fetcher';
+import { HISTORICAL_ELECTRICITY_PRICES } from '@/lib/historical-electricity-data';
 
-const EUROSTAT_URL =
-  'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_pc_204' +
-  '?format=JSON&geo=IT&unit=KWH&currency=EUR&tax=I_TAX&nrg_cons=KWH2500-4999&lang=EN';
+/**
+ * GET /api/electricity-prices?country=IT
+ *
+ * Returns semi-annual electricity prices for a country.
+ * Default country: IT (backward compatible with the original API).
+ *
+ * Fallback chain:
+ *  1. Postgres database (populated by monthly cron)
+ *  2. Live Eurostat API fetch (safety net if DB is empty)
+ *  3. Embedded historical data (Italy only, last resort)
+ */
+export async function GET(request: NextRequest) {
+  const country = request.nextUrl.searchParams.get('country')?.toUpperCase() || 'IT';
 
-// In-memory cache: refresh at most once per 24 hours
-let cache: { data: ElectricityPricePoint[]; fetchedAt: number } | null = null;
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-
-interface EurostatResponse {
-  dimension: {
-    time: {
-      category: {
-        index: Record<string, number>;
-        label: Record<string, string>;
-      };
-    };
-  };
-  value: Record<string, number>;
-  size: number[];
-}
-
-export async function GET() {
-  // Return cache if fresh
-  if (cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
-    return NextResponse.json({
-      source: 'eurostat_nrg_pc_204',
-      cached: true,
-      count: cache.data.length,
-      prices: cache.data,
-    });
-  }
-
+  // --- Tier 1: Read from database ---
   try {
-    const res = await fetch(EUROSTAT_URL, { signal: AbortSignal.timeout(30_000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const json: EurostatResponse = await res.json();
-
-    // Build index-to-time-label mapping
-    const timeIndex = json.dimension.time.category.index; // e.g. { "2008-S1": 0, "2008-S2": 1, ... }
-    const indexToTime: string[] = [];
-    for (const [label, idx] of Object.entries(timeIndex)) {
-      indexToTime[idx] = label;
-    }
-
-    // Extract prices, mapping value keys (stringified indices) to time labels
-    const prices: ElectricityPricePoint[] = [];
-    for (const [key, value] of Object.entries(json.value)) {
-      const idx = parseInt(key, 10);
-      const timeLabel = indexToTime[idx];
-      if (timeLabel && typeof value === 'number' && value > 0) {
-        prices.push({
-          date: timeLabel,
-          price: Math.round(value * 10000) / 10000, // 4 decimal places
-        });
-      }
-    }
-
-    // Sort by date ascending
-    prices.sort((a, b) => a.date.localeCompare(b.date));
-
-    cache = { data: prices, fetchedAt: Date.now() };
-
-    return NextResponse.json({
-      source: 'eurostat_nrg_pc_204',
-      cached: false,
-      count: prices.length,
-      prices,
-    });
-  } catch (err) {
-    // Return stale cache if available
-    if (cache) {
+    const prices = await getElectricityPrices(country);
+    if (prices && prices.length > 0) {
       return NextResponse.json({
-        source: 'eurostat_nrg_pc_204',
+        source: 'database',
         cached: true,
-        stale: true,
-        count: cache.data.length,
-        prices: cache.data,
+        country,
+        count: prices.length,
+        prices,
       });
     }
-    return NextResponse.json(
-      { error: `Failed to fetch Eurostat data: ${err instanceof Error ? err.message : err}` },
-      { status: 502 },
-    );
+  } catch {
+    // DB unavailable — fall through to tier 2
   }
+
+  // --- Tier 2: Live fetch from Eurostat ---
+  try {
+    const prices = await fetchElectricityPrices(country);
+    if (prices.length > 0) {
+      // Persist all countries in the background (best-effort)
+      fetchAllElectricityPrices()
+        .then((allRows) => upsertElectricityPrices(allRows))
+        .catch(() => {});
+
+      return NextResponse.json({
+        source: 'eurostat_nrg_pc_204',
+        cached: false,
+        country,
+        count: prices.length,
+        prices,
+      });
+    }
+  } catch {
+    // Live fetch failed — fall through to tier 3
+  }
+
+  // --- Tier 3: Embedded fallback (Italy only) ---
+  if (country === 'IT') {
+    return NextResponse.json({
+      source: 'embedded_fallback',
+      cached: true,
+      stale: true,
+      country,
+      count: HISTORICAL_ELECTRICITY_PRICES.length,
+      prices: HISTORICAL_ELECTRICITY_PRICES,
+    });
+  }
+
+  return NextResponse.json(
+    { error: `No electricity price data available for country: ${country}` },
+    { status: 404 },
+  );
 }

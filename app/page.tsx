@@ -350,7 +350,7 @@ export default function Home() {
                   {' '}Electricity: Eurostat nrg_pc_204 ({results.elecDataPoints} semi-annual obs, {results.elecDateRange})
                   {elecDataSource === 'live' ? ' (live)' : ' (embedded)'}.
                   <br />
-                  Model: GBM (correlated fuels, independent electricity — zero drift, vol parametric).
+                  Model: GBM (correlated fuels, independent electricity — {config.electricityDrift === 0 ? 'zero' : `${(config.electricityDrift * 100).toFixed(1)}%`} drift, vol parametric).
                   {' '}{config.nSimulations.toLocaleString()} Monte Carlo simulations, {config.horizonYears}-year horizon.
                 </p>
               </div>

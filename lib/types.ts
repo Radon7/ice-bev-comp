@@ -116,7 +116,7 @@ export const DEFAULT_CONFIG: SimConfig = {
   horizonYears: 10,
   annualKm: 15_000,
   electricityPrice: 0.33,
-  electricityDrift: parseFloat(process.env.NEXT_PUBLIC_ELECTRICITY_DRIFT ?? '0'),
+  electricityDrift: parseFloat(process.env.NEXT_PUBLIC_ELECTRICITY_DRIFT ?? '0.015'),
   electricityVol: 0.08,
   homeChargingShare: 0.80,
   homeChargingPriceFactor: 0.75,

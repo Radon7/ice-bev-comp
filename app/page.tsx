@@ -2,9 +2,10 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Sun, Moon } from 'lucide-react';
-import { CarParams, SimConfig, SimResults, DEFAULT_CARS, DEFAULT_CONFIG } from '@/lib/types';
+import { CarParams, SimConfig, SimResults, DEFAULT_CARS, DEFAULT_CONFIG, ElectricityPricePoint } from '@/lib/types';
 import { runSimulation } from '@/lib/simulation';
 import { PricePoint, HISTORICAL_PRICES } from '@/lib/historical-data';
+import { HISTORICAL_ELECTRICITY_PRICES } from '@/lib/historical-electricity-data';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useColorMode } from '@/components/ThemeRegistry';
@@ -28,17 +29,21 @@ export default function Home() {
   const [results, setResults] = useState<SimResults | null>(null);
   const [running, setRunning] = useState(false);
   const [prices, setPrices] = useState<PricePoint[]>(HISTORICAL_PRICES);
+  const [elecPrices, setElecPrices] = useState<ElectricityPricePoint[]>(HISTORICAL_ELECTRICITY_PRICES);
   const [dataSource, setDataSource] = useState<'embedded' | 'live'>('embedded');
+  const [elecDataSource, setElecDataSource] = useState<'embedded' | 'live'>('embedded');
   const [loadingPrices, setLoadingPrices] = useState(true);
   const pricesRef = useRef(prices);
   pricesRef.current = prices;
+  const elecPricesRef = useRef(elecPrices);
+  elecPricesRef.current = elecPrices;
 
   const run = useCallback(() => {
     setRunning(true);
     const minDuration = 400;
     const start = performance.now();
     setTimeout(() => {
-      const r = runSimulation(cars, config, 42, pricesRef.current);
+      const r = runSimulation(cars, config, 42, pricesRef.current, elecPricesRef.current);
       const elapsed = performance.now() - start;
       const remaining = Math.max(0, minDuration - elapsed);
       setTimeout(() => {
@@ -63,16 +68,30 @@ export default function Home() {
         }
       } catch {
         // Fall back to embedded data
-      } finally {
-        if (!cancelled) setLoadingPrices(false);
       }
     }
 
-    fetchPrices().then(() => {
+    async function fetchElecPrices() {
+      try {
+        const res = await fetch('/api/electricity-prices');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (!cancelled && json.prices?.length > 0) {
+          setElecPrices(json.prices);
+          elecPricesRef.current = json.prices;
+          setElecDataSource('live');
+        }
+      } catch {
+        // Fall back to embedded data
+      }
+    }
+
+    Promise.all([fetchPrices(), fetchElecPrices()]).then(() => {
       if (!cancelled) {
+        setLoadingPrices(false);
         setRunning(true);
         requestAnimationFrame(() => {
-          const r = runSimulation(DEFAULT_CARS, DEFAULT_CONFIG, 42, pricesRef.current);
+          const r = runSimulation(DEFAULT_CARS, DEFAULT_CONFIG, 42, pricesRef.current, elecPricesRef.current);
           setResults(r);
           setRunning(false);
         });
@@ -92,7 +111,7 @@ export default function Home() {
         <div className="max-w-[1400px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-lg font-semibold tracking-tight">Fuel vs Electric Car</h1>
-            {dataSource === 'live' && (
+            {(dataSource === 'live' || elecDataSource === 'live') && (
               <Badge variant="default" className="bg-emerald-600/80 text-white text-[10px]">
                 Live data
               </Badge>
@@ -107,8 +126,9 @@ export default function Home() {
         </div>
         <div className="max-w-[1400px] mx-auto px-4 pb-2">
           <p className="text-xs text-muted-foreground">
-            Monte Carlo simulation &middot; Italy &middot; Calibrated on EC Oil Bulletin data
-            {dataSource === 'live' && ` (${prices.length} observations)`}
+            Monte Carlo simulation &middot; Italy &middot; Calibrated on EC Oil Bulletin + Eurostat data
+            {dataSource === 'live' && ` (${prices.length} fuel obs)`}
+            {elecDataSource === 'live' && ` (${elecPrices.length} elec obs)`}
           </p>
         </div>
       </header>
@@ -139,7 +159,7 @@ export default function Home() {
               <Card className="flex flex-col items-center gap-3 py-12">
                 <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                 <p className="text-sm text-muted-foreground">
-                  Fetching latest fuel prices from EC Oil Bulletin...
+                  Fetching latest prices from EC Oil Bulletin &amp; Eurostat...
                 </p>
               </Card>
             )}
@@ -261,7 +281,8 @@ export default function Home() {
                             currentPrice={lastPrice.diesel} horizonYears={config.horizonYears}
                             color="#f97316" unit="/L" />
                           <PriceSimChart title="Electricity" bands={results.pathsElec}
-                            currentPrice={config.electricityPrice} horizonYears={config.horizonYears}
+                            currentPrice={elecPrices[elecPrices.length - 1]?.price ?? config.electricityPrice}
+                            horizonYears={config.horizonYears}
                             color="#10b981" unit="/kWh" />
                         </div>
                       </CardContent>
@@ -324,11 +345,12 @@ export default function Home() {
 
                 {/* Footer */}
                 <p className="text-[11px] text-muted-foreground/60 text-center mt-6 pb-4">
-                  Data: European Commission Weekly Oil Bulletin ({results.dataPoints} weekly observations, {results.dateRange}).
-                  {dataSource === 'live' ? ' (live)' : ' (embedded snapshot)'}
-                  {' '}Electricity: ARERA Q1 2026 reference rate.
+                  Fuel: EC Oil Bulletin ({results.dataPoints} weekly obs, {results.dateRange})
+                  {dataSource === 'live' ? ' (live)' : ' (embedded)'}.
+                  {' '}Electricity: Eurostat nrg_pc_204 ({results.elecDataPoints} semi-annual obs, {results.elecDateRange})
+                  {elecDataSource === 'live' ? ' (live)' : ' (embedded)'}.
                   <br />
-                  Model: Geometric Brownian Motion (correlated fuels, independent electricity).
+                  Model: GBM (correlated fuels, independent electricity — zero drift, vol parametric).
                   {' '}{config.nSimulations.toLocaleString()} Monte Carlo simulations, {config.horizonYears}-year horizon.
                 </p>
               </div>

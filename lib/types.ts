@@ -11,6 +11,11 @@ export interface CarParams {
   annualTaxAfterExempt?: number;
 }
 
+export interface ElectricityPricePoint {
+  date: string;   // e.g. "2024-S1"
+  price: number;  // €/kWh, all taxes included
+}
+
 export interface SimConfig {
   nSimulations: number;
   horizonYears: number;
@@ -44,6 +49,8 @@ export interface CalibrationResult {
   muDiesel: number;
   sigmaDiesel: number;
   correlation: number;
+  muElec: number;
+  elecDataPoints: number;
 }
 
 export interface BreakevenPoint {
@@ -65,6 +72,8 @@ export interface SimResults {
   sensitivityElecPrice: { price: number; winRate: number }[];
   dataPoints: number;
   dateRange: string;
+  elecDataPoints: number;
+  elecDateRange: string;
 }
 
 export const DEFAULT_CARS: CarParams[] = [
@@ -106,8 +115,8 @@ export const DEFAULT_CONFIG: SimConfig = {
   nSimulations: 5_000,
   horizonYears: 10,
   annualKm: 15_000,
-  electricityPrice: 0.28,
-  electricityDrift: 0.02,
+  electricityPrice: 0.33,
+  electricityDrift: parseFloat(process.env.NEXT_PUBLIC_ELECTRICITY_DRIFT ?? '0'),
   electricityVol: 0.08,
   homeChargingShare: 0.80,
   homeChargingPriceFactor: 0.75,

@@ -5,8 +5,9 @@
  * correlated fuel prices and independent electricity price paths.
  */
 
-import { CarParams, SimConfig, SimResults, TcoStats, PercentileBands } from './types';
+import { CarParams, SimConfig, SimResults, TcoStats, PercentileBands, ElectricityPricePoint } from './types';
 import { PricePoint, HISTORICAL_PRICES } from './historical-data';
+import { HISTORICAL_ELECTRICITY_PRICES } from './historical-electricity-data';
 
 // ── Seeded PRNG (Mulberry32) ────────────────────────────────────────────────
 
@@ -151,6 +152,7 @@ export function runSimulation(
   config: SimConfig,
   seed: number = 42,
   prices?: PricePoint[],
+  electricityPrices?: ElectricityPricePoint[],
 ): SimResults {
   // 1. Load historical data (live prices if provided, else embedded snapshot)
   const priceData = prices && prices.length > 0 ? prices : HISTORICAL_PRICES;
@@ -213,19 +215,31 @@ export function runSimulation(
     }
   }
 
-  // 4. Simulate electricity prices (independent GBM)
+  // 4. Electricity: zero drift (no trend assumption), vol parametric
+  const elecData = electricityPrices && electricityPrices.length >= 2
+    ? electricityPrices
+    : HISTORICAL_ELECTRICITY_PRICES;
+  const elecPricesSeries = elecData.map(p => p.price);
+  const muElec = config.electricityDrift;
+
+  // Use latest historical price as S0 if available, otherwise user config
+  const S0_elec = elecPricesSeries.length > 0
+    ? elecPricesSeries[elecPricesSeries.length - 1]
+    : config.electricityPrice;
+
+  // Simulate electricity prices (independent GBM)
   const rngElec = mulberry32(seed + 81);
-  const driftElec = (config.electricityDrift - 0.5 * config.electricityVol ** 2) * dt;
+  const driftElec = (muElec - 0.5 * config.electricityVol ** 2) * dt;
   const volElecSqrt = config.electricityVol * Math.sqrt(dt);
 
   const pathsElec: Float64Array[] = new Array(nSims);
   for (let sim = 0; sim < nSims; sim++) {
     pathsElec[sim] = new Float64Array(nSteps + 1);
-    pathsElec[sim][0] = config.electricityPrice;
+    pathsElec[sim][0] = S0_elec;
     let logS = 0;
     for (let t = 1; t <= nSteps; t++) {
       logS += driftElec + volElecSqrt * normalRandom(rngElec);
-      pathsElec[sim][t] = config.electricityPrice * Math.exp(logS);
+      pathsElec[sim][t] = S0_elec * Math.exp(logS);
     }
   }
 
@@ -392,10 +406,10 @@ export function runSimulation(
 
   // 12. Sensitivity: electricity price (-30% to +30%)
   const sensitivityElecPrice: { price: number; winRate: number }[] = [];
-  const elecPrices = [-0.30, -0.20, -0.10, 0, +0.10, +0.20, +0.30]
-    .map(pct => Math.round(config.electricityPrice * (1 + pct) * 100) / 100);
-  for (const elecPrice of elecPrices) {
-    const scale = elecPrice / config.electricityPrice;
+  const elecSensityPrices = [-0.30, -0.20, -0.10, 0, +0.10, +0.20, +0.30]
+    .map(pct => Math.round(S0_elec * (1 + pct) * 100) / 100);
+  for (const elecPrice of elecSensityPrices) {
+    const scale = elecPrice / S0_elec;
     const scaledPaths: Float64Array[] = pathsElec.map(p => {
       const sp = new Float64Array(p.length);
       for (let i = 0; i < p.length; i++) sp[i] = p[i] * scale;
@@ -421,6 +435,8 @@ export function runSimulation(
       muDiesel: calDiesel.mu,
       sigmaDiesel: calDiesel.sigma,
       correlation,
+      muElec,
+      elecDataPoints: elecData.length,
     },
     winRates,
     breakeven,
@@ -430,5 +446,7 @@ export function runSimulation(
     sensitivityElecPrice,
     dataPoints: n,
     dateRange: `${priceData[0].date} to ${priceData[n - 1].date}`,
+    elecDataPoints: elecData.length,
+    elecDateRange: `${elecData[0].date} to ${elecData[elecData.length - 1].date}`,
   };
 }

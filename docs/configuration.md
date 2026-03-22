@@ -9,11 +9,11 @@ All default values are defined in `lib/types.ts`.
 | `numSimulations` | 5,000 | 1,000-10,000 | Number of Monte Carlo runs |
 | `horizonYears` | 10 | 1-20 | Ownership period in years |
 | `annualKm` | 15,000 | 5,000-50,000 | Annual driving distance |
-| `electricityPrice` | 0.28 | 0.10-0.60 | Base electricity price (EUR/kWh) |
+| `electricityPrice` | 0.33 | 0.10-0.60 | Base electricity price (EUR/kWh) |
 | `homeChargingShare` | 0.80 | 0-1 | Fraction of charging done at home |
 | `publicChargingPremium` | 1.50 | 1-3 | Multiplier for public charging cost |
-| `electricityDrift` | 0.02 | - | Annual price drift for electricity |
-| `electricityVol` | 0.08 | - | Annual price volatility for electricity |
+| `electricityDrift` | 0 | - | Annual price drift for electricity (0 = no trend assumption). Overridable via `NEXT_PUBLIC_ELECTRICITY_DRIFT` env var |
+| `electricityVol` | 0.08 | - | Annual price volatility for electricity (parametric) |
 
 ## Vehicle Parameters (`CarParams`)
 
@@ -60,6 +60,7 @@ All default values are defined in `lib/types.ts`.
 
 - **EV tax exemption**: No road tax for the first 5 years of ownership, then EUR 100/year
 - **Fuel prices**: Sourced from EC Oil Bulletin, specific to Italy (includes taxes)
+- **Electricity prices**: Sourced from Eurostat nrg_pc_204 (Italian household, 2500-4999 kWh band, all taxes)
 - **Home charging factor**: 0.75x base electricity price (accounts for off-peak/domestic tariffs)
 
 ## TypeScript Types
@@ -81,10 +82,10 @@ interface SimConfig {
   horizonYears: number;
   annualKm: number;
   electricityPrice: number;
-  homeChargingShare: number;
-  publicChargingPremium: number;
   electricityDrift: number;
   electricityVol: number;
+  homeChargingShare: number;
+  publicChargingPremium: number;
 }
 
 interface PriceData {

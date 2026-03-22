@@ -1,17 +1,12 @@
 'use client';
 
+import { Box, Typography, Card, CardContent, Chip, Stack } from '@mui/material';
 import { SimResults } from '@/lib/types';
 
-const COLORS: Record<string, string> = {
-  'Gasoline (Euro 95)': 'bg-blue-50 border-blue-500 dark:bg-blue-950',
-  'Diesel': 'bg-orange-50 border-orange-500 dark:bg-orange-950',
-  'Electric (BEV)': 'bg-green-50 border-green-500 dark:bg-green-950',
-};
-
-const TEXT_COLORS: Record<string, string> = {
-  'Gasoline (Euro 95)': 'text-blue-700 dark:text-blue-300',
-  'Diesel': 'text-orange-700 dark:text-orange-300',
-  'Electric (BEV)': 'text-green-700 dark:text-green-300',
+const CARD_COLORS: Record<string, { border: string; bg: string }> = {
+  'Gasoline (Euro 95)': { border: '#2196F3', bg: 'rgba(33,150,243,0.08)' },
+  'Diesel': { border: '#FF9800', bg: 'rgba(255,152,0,0.08)' },
+  'Electric (BEV)': { border: '#4CAF50', bg: 'rgba(76,175,80,0.08)' },
 };
 
 function fmt(n: number): string {
@@ -27,78 +22,89 @@ export default function ResultsSummary({ results, horizonYears, annualKm }: {
   );
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-baseline gap-2 flex-wrap">
-        <h2 className="text-xl font-bold">{horizonYears}-Year TCO</h2>
-        <span className="text-sm text-gray-500">({annualKm.toLocaleString()} km/yr)</span>
-      </div>
+    <Stack spacing={3}>
+      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
+        <Typography variant="h6">{horizonYears}-Year TCO</Typography>
+        <Typography variant="caption" color="text.secondary">
+          ({annualKm.toLocaleString()} km/yr)
+        </Typography>
+      </Box>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
         {names.map(name => {
           const s = results.tco[name];
           const isBest = name === bestName;
+          const colors = CARD_COLORS[name] ?? { border: 'grey', bg: 'transparent' };
           return (
-            <div key={name} className={`rounded-lg border-l-4 p-4 ${COLORS[name] ?? 'bg-gray-50 border-gray-500'}`}>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className={`font-semibold text-sm ${TEXT_COLORS[name] ?? ''}`}>{name}</h3>
-                {isBest && (
-                  <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded-full">Best</span>
-                )}
-              </div>
-              <div className="text-2xl font-bold">{fmt(s.mean)}</div>
-              <div className="text-xs text-gray-500 mt-1 space-y-0.5">
-                <div>Median: {fmt(s.median)}</div>
-                <div>Range: {fmt(s.p5)} – {fmt(s.p95)}</div>
-                <div>Win rate: {results.winRates[name]?.toFixed(1)}%</div>
-              </div>
-            </div>
+            <Card key={name} variant="outlined" sx={{ borderLeft: 4, borderColor: colors.border, bgcolor: colors.bg }}>
+              <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="subtitle2" sx={{ color: colors.border }}>{name}</Typography>
+                  {isBest && <Chip label="Best" color="success" size="small" />}
+                </Box>
+                <Typography variant="h5">{fmt(s.mean)}</Typography>
+                <Stack spacing={0.5} sx={{ mt: 1 }}>
+                  <Typography variant="caption" color="text.secondary">Median: {fmt(s.median)}</Typography>
+                  <Typography variant="caption" color="text.secondary">Range: {fmt(s.p5)} – {fmt(s.p95)}</Typography>
+                  <Typography variant="caption" color="text.secondary">Win rate: {results.winRates[name]?.toFixed(1)}%</Typography>
+                </Stack>
+              </CardContent>
+            </Card>
           );
         })}
-      </div>
+      </Box>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
         {names.includes('Electric (BEV)') && names.includes('Gasoline (Euro 95)') && (() => {
           const saving = results.tco['Gasoline (Euro 95)'].mean - results.tco['Electric (BEV)'].mean;
           const evWins = results.winRates['Electric (BEV)'] ?? 0;
           return (
-            <div className="bg-gray-50 dark:bg-gray-800 rounded p-3">
-              <div className="font-medium">EV vs Gasoline</div>
-              <div className={saving > 0 ? 'text-green-600' : 'text-red-600'}>
-                {saving > 0 ? `EV saves ${fmt(saving)}` : `Gasoline saves ${fmt(-saving)}`}
-              </div>
-              <div className="text-gray-500">EV cheaper in {evWins.toFixed(0)}% of sims</div>
-            </div>
+            <Card variant="outlined" sx={{ bgcolor: 'action.hover' }}>
+              <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                <Typography variant="subtitle2">EV vs Gasoline</Typography>
+                <Typography variant="body2" color={saving > 0 ? 'success.main' : 'error.main'}>
+                  {saving > 0 ? `EV saves ${fmt(saving)}` : `Gasoline saves ${fmt(-saving)}`}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  EV cheaper in {evWins.toFixed(0)}% of sims
+                </Typography>
+              </CardContent>
+            </Card>
           );
         })()}
         {names.includes('Electric (BEV)') && names.includes('Diesel') && (() => {
           const saving = results.tco['Diesel'].mean - results.tco['Electric (BEV)'].mean;
           return (
-            <div className="bg-gray-50 dark:bg-gray-800 rounded p-3">
-              <div className="font-medium">EV vs Diesel</div>
-              <div className={saving > 0 ? 'text-green-600' : 'text-red-600'}>
-                {saving > 0 ? `EV saves ${fmt(saving)}` : `Diesel saves ${fmt(-saving)}`}
-              </div>
-            </div>
+            <Card variant="outlined" sx={{ bgcolor: 'action.hover' }}>
+              <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                <Typography variant="subtitle2">EV vs Diesel</Typography>
+                <Typography variant="body2" color={saving > 0 ? 'success.main' : 'error.main'}>
+                  {saving > 0 ? `EV saves ${fmt(saving)}` : `Diesel saves ${fmt(-saving)}`}
+                </Typography>
+              </CardContent>
+            </Card>
           );
         })()}
         {names.includes('Diesel') && names.includes('Gasoline (Euro 95)') && (() => {
           const saving = results.tco['Gasoline (Euro 95)'].mean - results.tco['Diesel'].mean;
           return (
-            <div className="bg-gray-50 dark:bg-gray-800 rounded p-3">
-              <div className="font-medium">Diesel vs Gasoline</div>
-              <div className={saving > 0 ? 'text-green-600' : 'text-red-600'}>
-                {saving > 0 ? `Diesel saves ${fmt(saving)}` : `Gasoline saves ${fmt(-saving)}`}
-              </div>
-            </div>
+            <Card variant="outlined" sx={{ bgcolor: 'action.hover' }}>
+              <CardContent sx={{ '&:last-child': { pb: 2 } }}>
+                <Typography variant="subtitle2">Diesel vs Gasoline</Typography>
+                <Typography variant="body2" color={saving > 0 ? 'success.main' : 'error.main'}>
+                  {saving > 0 ? `Diesel saves ${fmt(saving)}` : `Gasoline saves ${fmt(-saving)}`}
+                </Typography>
+              </CardContent>
+            </Card>
           );
         })()}
-      </div>
+      </Box>
 
-      <div className="text-xs text-gray-400 mt-2">
+      <Typography variant="caption" color="text.disabled">
         GBM calibrated on {results.dataPoints} weekly observations ({results.dateRange}).
         {' '}mu_e95={results.calibration.muE95.toFixed(4)}, sigma_e95={results.calibration.sigmaE95.toFixed(4)},
         {' '}rho={results.calibration.correlation.toFixed(4)}
-      </div>
-    </div>
+      </Typography>
+    </Stack>
   );
 }

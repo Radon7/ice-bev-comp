@@ -51,7 +51,7 @@ export async function fetchElectricityPrices(
   country: string,
 ): Promise<ElectricityPricePoint[]> {
   const geoCode = EUROSTAT_GEO_MAP[country] ?? country;
-  const url = `${EUROSTAT_BASE_URL}&geo=${geoCode}`;
+  const url = `${EUROSTAT_BASE_URL}&geo=${encodeURIComponent(geoCode)}`;
 
   const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
   if (!res.ok) throw new Error(`Eurostat HTTP ${res.status} for ${country}`);

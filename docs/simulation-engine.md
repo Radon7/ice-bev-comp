@@ -10,7 +10,7 @@ The engine runs N independent simulations (default: 5,000), each generating rand
 
 ### 1. Load Historical Prices
 
-The simulation accepts either live EC Oil Bulletin data or falls back to an embedded 52-week snapshot (`lib/historical-data.ts`). It extracts weekly Euro95 and Diesel prices in EUR/L.
+The simulation accepts either live EC Oil Bulletin data or falls back to an embedded snapshot (`lib/historical-data.ts`, ~1,000 weekly observations). It extracts weekly Euro95 and Diesel prices in EUR/L. Electricity prices come from Eurostat data or fall back to `lib/historical-electricity-data.ts` (35 semi-annual observations).
 
 ### 2. Calibrate GBM Parameters
 
@@ -43,7 +43,7 @@ This produces realistic correlated fuel price paths where Euro95 and Diesel move
 ### 4. Electricity Price Paths
 
 Electricity is modeled independently with configurable GBM parameters:
-- Default drift: 2% per year
+- Default drift: 0% per year (no trend assumption; configurable via `NEXT_PUBLIC_ELECTRICITY_DRIFT` env var)
 - Default volatility: 8% per year
 
 The effective electricity price accounts for mixed charging:

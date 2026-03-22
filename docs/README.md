@@ -25,7 +25,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | Layer | Technology |
 |-------|-----------|
 | Framework | Next.js 16 |
-| UI | React 19, Material-UI 7, Tailwind CSS 4 |
+| UI | React 19, shadcn/ui, Tailwind CSS 4 |
 | Charts | Recharts 3 |
 | Language | TypeScript 5 |
 | Data Parsing | xlsx (for EC Oil Bulletin) |

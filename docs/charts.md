@@ -1,9 +1,9 @@
 # Charts & Visualizations
 
 All charts use [Recharts](https://recharts.org/) and follow a consistent color scheme:
-- **Blue** (`#2196F3`): Gasoline (Euro95)
-- **Orange** (`#FF9800`): Diesel
-- **Green** (`#4CAF50`): Electric (BEV)
+- **Blue** (`#3b82f6`): Gasoline (Euro95)
+- **Orange** (`#f97316`): Diesel
+- **Emerald** (`#10b981`): Electric (BEV)
 
 ---
 

@@ -4,15 +4,15 @@
 
 The main orchestrator component. Manages all application state and renders the layout:
 
-- **Top bar**: App title + theme toggle button
-- **Left sidebar** (sticky): `ParameterPanel`
+- **Header**: App title, "Live data" badge, theme toggle button
+- **Left sidebar** (sticky): `ParameterPanel` inside a Card
 - **Main area**: `ResultsSummary`, all charts, `SensitivityTable`
 
 ### Key Behavior
 
-- Fetches live prices from `/api/prices` on mount
-- Passes live prices to `runSimulation()` when available
-- Shows loading spinner during simulation (with iteration count)
+- Fetches live prices from `/api/prices` and `/api/electricity-prices` on mount (in parallel)
+- Passes live prices to `runSimulation()` when available, otherwise uses embedded fallbacks
+- Shows loading spinner during price fetch and during simulation
 - Responsive grid: sidebar collapses on small screens
 
 ---
@@ -33,16 +33,12 @@ Interactive controls for all simulation parameters.
 | `onConfigChange` | `(config: SimConfig) => void` | Config update callback |
 | `onRun` | `() => void` | Trigger simulation |
 | `running` | `boolean` | Disable controls during simulation |
-| `loadingPrices` | `boolean` | Show price loading state |
-| `prices` | `PriceData[] \| null` | Live prices to display |
 
 ### Sections
 
 1. **Simulation Settings**: Horizon (years), number of simulations, annual driving (km)
 2. **Electricity Settings**: Base price, home charging share, public charging premium
-3. **Vehicle Cards** (one per car):
-   - Color-coded border (blue/orange/green)
-   - Sliders: purchase price, consumption, maintenance, insurance, tax, depreciation
+3. **Vehicle Cards** (one per car): Sliders for purchase price, consumption, maintenance, insurance, tax, depreciation
 
 ---
 
@@ -50,22 +46,19 @@ Interactive controls for all simulation parameters.
 
 **File**: `components/ResultsSummary.tsx`
 
-Displays headline TCO results after simulation.
+Displays vehicle TCO cards after simulation.
 
 ### Props
 
 | Prop | Type | Description |
 |------|------|-------------|
-| `results` | `SimulationResult` | Full simulation output |
-| `config` | `SimConfig` | Config (for display context) |
+| `results` | `SimResults` | Full simulation output |
 
 ### Display
 
-- **3 vehicle cards**: Mean, Median, P5-P95 range, Win Rate
+- **3 vehicle cards**: Mean, Median, P5-P95 range, color-coded left border (blue/orange/emerald)
 - **"Best" badge** on the lowest-cost vehicle
-- **3 comparison cards**: EV vs Gasoline, EV vs Diesel, Diesel vs Gasoline
-  - Shows EUR savings and percentage difference
-- **Calibration info**: Drift (mu), volatility (sigma), correlation for fuel prices
+- Comparison cards and win rate highlight are rendered directly in `page.tsx`
 
 ---
 
@@ -79,14 +72,15 @@ Two sensitivity analysis tables.
 
 | Prop | Type | Description |
 |------|------|-------------|
-| `results` | `SimulationResult` | Contains sensitivity data |
+| `sensitivityEvPrice` | `{ price: number; winRate: number }[]` | EV purchase price sensitivity data |
+| `sensitivityElecPrice` | `{ price: number; winRate: number }[]` | Electricity price sensitivity data |
 
 ### Tables
 
 1. **EV Purchase Price Sensitivity** (EUR 28k-40k): EV win rate vs gasoline at each price point
 2. **Electricity Price Sensitivity** (EUR 0.20-0.40/kWh): EV win rate vs gasoline at each price
 
-Cells are color-coded: green when EV wins >50%, red when <50%.
+Cells show a progress bar colored emerald when EV wins >50%, red when <50%.
 
 ---
 
@@ -94,21 +88,17 @@ Cells are color-coded: green when EV wins >50%, red when <50%.
 
 **File**: `components/ThemeRegistry.tsx`
 
-MUI theme provider with dark/light mode support.
+Dark/light mode provider using Tailwind CSS class strategy.
 
 ### Exports
 
 | Export | Type | Description |
 |--------|------|-------------|
-| `ThemeRegistry` | Component | Wraps app in MUI `ThemeProvider` |
+| `ThemeRegistry` | Component | Wraps app in `ColorModeContext.Provider` |
 | `useColorMode` | Hook | Returns `{ mode, toggleColorMode }` |
 
-### Color Palette
+### Behavior
 
-| Role | Color | Usage |
-|------|-------|-------|
-| Primary | `#2196F3` | Gasoline / general UI |
-| Secondary | `#FF9800` | Diesel |
-| Success | `#4CAF50` | Electric |
-| Dark BG | `#0a0f1a` | Dark mode background |
-| Dark Paper | `#111827` | Dark mode card surfaces |
+- Toggles the `dark` class on `document.documentElement`
+- Persists preference to `localStorage` under the key `theme`
+- Defaults to dark mode on first visit

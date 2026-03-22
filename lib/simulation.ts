@@ -375,9 +375,11 @@ export function runSimulation(
     annualEnergyCost[car.name] = costs;
   }
 
-  // 11. Sensitivity: EV purchase price
+  // 11. Sensitivity: EV purchase price (-30% to +30%)
   const sensitivityEvPrice: { price: number; winRate: number }[] = [];
-  for (const price of [28000, 30000, 32000, 35000, 38000, 40000]) {
+  const evPrices = [-0.30, -0.20, -0.10, 0, +0.10, +0.20, +0.30]
+    .map(pct => Math.round(evCar.purchasePrice * (1 + pct) / 1000) * 1000);
+  for (const price of evPrices) {
     const tempEv = { ...evCar, purchasePrice: price };
     const tcoEv = computeTCO(tempEv, null, pathsElec, config);
     const tcoGas = tcoResults[gasCar.name].values;
@@ -388,9 +390,11 @@ export function runSimulation(
     sensitivityEvPrice.push({ price, winRate: (wins / nSims) * 100 });
   }
 
-  // 12. Sensitivity: electricity price
+  // 12. Sensitivity: electricity price (-30% to +30%)
   const sensitivityElecPrice: { price: number; winRate: number }[] = [];
-  for (const elecPrice of [0.20, 0.25, 0.28, 0.30, 0.35, 0.40]) {
+  const elecPrices = [-0.30, -0.20, -0.10, 0, +0.10, +0.20, +0.30]
+    .map(pct => Math.round(config.electricityPrice * (1 + pct) * 100) / 100);
+  for (const elecPrice of elecPrices) {
     const scale = elecPrice / config.electricityPrice;
     const scaledPaths: Float64Array[] = pathsElec.map(p => {
       const sp = new Float64Array(p.length);

@@ -3,8 +3,10 @@ import type { NextRequest } from 'next/server';
 import { getElectricityPrices, upsertElectricityPrices } from '@/lib/price-store';
 import { fetchElectricityPrices, fetchAllElectricityPrices, EU_COUNTRIES } from '@/lib/eurostat-fetcher';
 import { HISTORICAL_ELECTRICITY_PRICES } from '@/lib/historical-electricity-data';
+import { authenticateRequest } from '@/lib/api-auth';
 
 const VALID_COUNTRIES = new Set(EU_COUNTRIES);
+const CACHE_HEADERS = { 'Cache-Control': 'public, max-age=3600, s-maxage=86400' };
 
 /**
  * GET /api/electricity-prices?country=IT
@@ -18,6 +20,10 @@ const VALID_COUNTRIES = new Set(EU_COUNTRIES);
  *  3. Embedded historical data (Italy only, last resort)
  */
 export async function GET(request: NextRequest) {
+  // Authenticate external requests (same-origin bypasses auth)
+  const authError = await authenticateRequest(request);
+  if (authError) return authError;
+
   const country = request.nextUrl.searchParams.get('country')?.toUpperCase() || 'IT';
 
   if (!VALID_COUNTRIES.has(country)) {
@@ -37,7 +43,7 @@ export async function GET(request: NextRequest) {
         country,
         count: prices.length,
         prices,
-      });
+      }, { headers: CACHE_HEADERS });
     }
   } catch {
     // DB unavailable — fall through to tier 2
@@ -58,7 +64,7 @@ export async function GET(request: NextRequest) {
         country,
         count: prices.length,
         prices,
-      });
+      }, { headers: CACHE_HEADERS });
     }
   } catch {
     // Live fetch failed — fall through to tier 3
@@ -73,7 +79,7 @@ export async function GET(request: NextRequest) {
       country,
       count: HISTORICAL_ELECTRICITY_PRICES.length,
       prices: HISTORICAL_ELECTRICITY_PRICES,
-    });
+    }, { headers: CACHE_HEADERS });
   }
 
   return NextResponse.json(

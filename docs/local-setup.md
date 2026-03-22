@@ -172,3 +172,7 @@ docker exec comp-benzina-db pg_isready
 **Refresh returns 401**: Check that `CRON_SECRET` in `.env.local` matches the `Authorization: Bearer <value>` header.
 
 **No data for a country**: Run the seed step (step 6). Without seeding, the database is empty and the app falls back to live EC fetch for Italy only.
+
+## Deploying to production
+
+For Vercel deployment with Neon Postgres, see the [Production Deployment](./database.md#production-deployment-vercel) section in the database docs.

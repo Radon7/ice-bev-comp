@@ -58,6 +58,43 @@ Tracks refresh attempts for monitoring.
 - **Storage**: ~6 MB
 - **Update frequency**: Weekly (Monday 14:00 UTC via Vercel cron)
 
+## Production Deployment (Vercel)
+
+### 1. Create the database
+
+Go to your Vercel project dashboard → **Storage** tab → **Create Database** → **Postgres (Neon)**. Vercel auto-injects `POSTGRES_URL` and related env vars into your project.
+
+### 2. Run the schema migration
+
+In the Vercel Storage dashboard, click on your database → **SQL Editor**. Paste the contents of `scripts/migrations/001_create_tables.sql` and run it. This creates the `fuel_prices` and `refresh_log` tables.
+
+### 3. Set CRON_SECRET
+
+Go to **Settings** → **Environment Variables**. Vercel auto-generates `CRON_SECRET` for cron jobs. If it's not present, add it manually with any secure random string.
+
+### 4. Deploy
+
+Push and merge the branch. Vercel deploys automatically.
+
+### 5. Initial backfill
+
+After the first deploy, trigger a manual refresh to populate all historical data:
+
+```bash
+curl -H "Authorization: Bearer <your-CRON_SECRET>" \
+  https://your-app.vercel.app/api/prices/refresh
+```
+
+This loads all 28 countries since 2005 (~128K rows). Takes about 5-10 seconds.
+
+### 6. Verify
+
+- Visit `https://your-app.vercel.app/api/prices` — should return `"source": "database"`
+- Check the Vercel Postgres dashboard to see the rows
+- Visit `https://your-app.vercel.app/api/prices?country=DE` to confirm multi-country works
+
+After this, the weekly cron (`vercel.json`) fires every Monday at 14:00 UTC automatically — no further action needed.
+
 ## Local Development Setup
 
 ### 1. Start Postgres with Docker

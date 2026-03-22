@@ -52,7 +52,7 @@ async function handleRefresh(request: Request) {
     });
 
     return NextResponse.json(
-      { ok: false, error: message, durationMs: Date.now() - startedAt },
+      { ok: false, error: 'Refresh failed', durationMs: Date.now() - startedAt },
       { status: 502 },
     );
   }

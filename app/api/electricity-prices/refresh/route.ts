@@ -48,7 +48,7 @@ async function handleRefresh(request: Request) {
     await logRefresh({ source: 'electricity_prices', error: message }).catch(() => {});
 
     return NextResponse.json(
-      { ok: false, error: message, durationMs: Date.now() - startedAt },
+      { ok: false, error: 'Refresh failed', durationMs: Date.now() - startedAt },
       { status: 502 },
     );
   }

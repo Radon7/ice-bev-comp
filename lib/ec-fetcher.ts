@@ -1,9 +1,9 @@
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 const EC_OIL_BULLETIN_URL =
   'https://energy.ec.europa.eu/document/download/906e60ca-8b6a-44e7-8589-652854d2fd3f_en';
 
-const DATA_START_ROW = 3;
+const DATA_START_ROW = 4; // ExcelJS rows are 1-indexed; data starts at row 4 (header is row 1)
 
 /** A single parsed price row for any country/fuel combination. */
 export interface FuelPriceRow {
@@ -19,16 +19,6 @@ interface ColumnMapping {
   country: string;
   fuelType: string;
 }
-
-/**
- * Fuel type identifiers found in the EC Oil Bulletin header row 0.
- * Maps the suffix in `XX_price_with_tax_<suffix>` to our normalized fuel type names.
- */
-const FUEL_TYPE_MAP: Record<string, string> = {
-  euro95: 'euro95',
-  diesel: 'diesel',
-  LPG: 'lpg',
-};
 
 /**
  * Build fuel type map dynamically, handling the heating oil naming quirk.
@@ -54,40 +44,49 @@ function matchFuelType(suffix: string, country: string): string | null {
  *
  * Skips aggregate rows (EU, EUR) and exchange rate columns.
  */
-function discoverColumns(headerRow: (string | number | null)[]): ColumnMapping[] {
+function discoverColumns(headerRow: ExcelJS.Row): ColumnMapping[] {
   const mappings: ColumnMapping[] = [];
   const pricePattern = /^([A-Z]{2,3})_price_with_tax_(.+)$/;
 
-  for (let col = 0; col < headerRow.length; col++) {
-    const header = headerRow[col];
-    if (header == null || typeof header !== 'string') continue;
+  headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+    const header = cell.value;
+    if (header == null || typeof header !== 'string') return;
 
     const match = header.match(pricePattern);
-    if (!match) continue;
+    if (!match) return;
 
     const [, country, suffix] = match;
 
     // Skip EU/EUR aggregate columns — we only want individual countries
-    if (country === 'EU' || country === 'EUR') continue;
+    if (country === 'EU' || country === 'EUR') return;
 
     const fuelType = matchFuelType(suffix, country);
-    if (!fuelType) continue;
+    if (!fuelType) return;
 
-    mappings.push({ col, country, fuelType });
-  }
+    mappings.push({ col: colNumber, country, fuelType });
+  });
 
   return mappings;
 }
 
-/** Parse an Excel date value (serial number or string) to YYYY-MM-DD. */
-function parseDate(dateVal: string | number): string | null {
-  if (typeof dateVal === 'number') {
-    const d = XLSX.SSF.parse_date_code(dateVal);
-    return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
+/** Parse an Excel cell value (Date object, number, or string) to YYYY-MM-DD. */
+function parseDate(dateVal: ExcelJS.CellValue): string | null {
+  if (dateVal instanceof Date) {
+    return dateVal.toISOString().slice(0, 10);
   }
-  const d = new Date(String(dateVal));
-  if (isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 10);
+  if (typeof dateVal === 'number') {
+    // Excel serial date: days since 1899-12-30
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+    const d = new Date(excelEpoch.getTime() + dateVal * 86400000);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 10);
+  }
+  if (typeof dateVal === 'string') {
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 10);
+  }
+  return null;
 }
 
 /**
@@ -101,39 +100,32 @@ export async function fetchAllECPrices(): Promise<FuelPriceRow[]> {
   if (!res.ok) throw new Error(`EC Oil Bulletin HTTP ${res.status}`);
 
   const buf = await res.arrayBuffer();
-  const wb = XLSX.read(buf, { type: 'array' });
+  const workbook = new ExcelJS.Workbook();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await workbook.xlsx.load(Buffer.from(buf) as any);
 
-  const ws = wb.Sheets['Prices with taxes'];
+  const ws = workbook.getWorksheet('Prices with taxes');
   if (!ws) throw new Error('Sheet "Prices with taxes" not found');
 
-  const rows: (string | number | null)[][] = XLSX.utils.sheet_to_json(ws, {
-    header: 1,
-    raw: true,
-    defval: null,
-  });
-
-  if (rows.length < DATA_START_ROW + 1) {
-    throw new Error(`Expected at least ${DATA_START_ROW + 1} rows, got ${rows.length}`);
-  }
-
-  // Discover columns from header row 0
-  const columnMappings = discoverColumns(rows[0]);
+  const headerRow = ws.getRow(1);
+  const columnMappings = discoverColumns(headerRow);
   if (columnMappings.length === 0) {
     throw new Error('No price columns discovered from XLSX headers');
   }
 
   const results: FuelPriceRow[] = [];
 
-  for (let i = DATA_START_ROW; i < rows.length; i++) {
-    const row = rows[i];
-    const dateVal = row[0];
-    if (dateVal == null) continue;
+  ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber < DATA_START_ROW) return;
+
+    const dateVal = row.getCell(1).value;
+    if (dateVal == null) return;
 
     const dateStr = parseDate(dateVal);
-    if (!dateStr) continue;
+    if (!dateStr) return;
 
     for (const { col, country, fuelType } of columnMappings) {
-      const val = row[col];
+      const val = row.getCell(col).value;
       if (val == null) continue;
 
       const price = Number(val);
@@ -144,7 +136,7 @@ export async function fetchAllECPrices(): Promise<FuelPriceRow[]> {
 
       results.push({ date: dateStr, country, fuelType, priceEurL });
     }
-  }
+  });
 
   return results;
 }

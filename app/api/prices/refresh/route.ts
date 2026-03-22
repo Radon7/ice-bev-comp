@@ -1,6 +1,16 @@
 import { NextResponse } from 'next/server';
+import { timingSafeEqual } from 'node:crypto';
 import { fetchAllECPrices } from '@/lib/ec-fetcher';
 import { upsertPrices, logRefresh } from '@/lib/price-store';
+
+/** Constant-time comparison to prevent timing attacks on secret tokens. */
+function verifyBearerToken(authHeader: string | null): boolean {
+  const expected = process.env.CRON_SECRET;
+  if (!expected || !authHeader) return false;
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (token.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+}
 
 /**
  * POST /api/prices/refresh
@@ -12,9 +22,7 @@ import { upsertPrices, logRefresh } from '@/lib/price-store';
  * Also accepts GET for manual triggers.
  */
 async function handleRefresh(request: Request) {
-  // Verify auth
-  const authHeader = request.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!verifyBearerToken(request.headers.get('authorization'))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

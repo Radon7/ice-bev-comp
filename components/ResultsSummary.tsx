@@ -1,110 +1,59 @@
 'use client';
 
-import { Box, Typography, Card, CardContent, Chip, Stack } from '@mui/material';
 import { SimResults } from '@/lib/types';
+import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
-const CARD_COLORS: Record<string, { border: string; bg: string }> = {
-  'Gasoline (Euro 95)': { border: '#2196F3', bg: 'rgba(33,150,243,0.08)' },
-  'Diesel': { border: '#FF9800', bg: 'rgba(255,152,0,0.08)' },
-  'Electric (BEV)': { border: '#4CAF50', bg: 'rgba(76,175,80,0.08)' },
+const VEHICLE_STYLES: Record<string, { border: string; text: string }> = {
+  'Gasoline (Euro 95)': { border: 'border-l-blue-500', text: 'text-blue-400' },
+  'Diesel': { border: 'border-l-orange-500', text: 'text-orange-400' },
+  'Electric (BEV)': { border: 'border-l-emerald-500', text: 'text-emerald-400' },
 };
 
 function fmt(n: number): string {
   return `€${Math.round(n).toLocaleString()}`;
 }
 
-export default function ResultsSummary({ results, horizonYears, annualKm }: {
-  results: SimResults; horizonYears: number; annualKm: number;
-}) {
+export default function ResultsSummary({ results }: { results: SimResults }) {
   const names = Object.keys(results.tco);
   const bestName = names.reduce((a, b) =>
     results.tco[a].mean < results.tco[b].mean ? a : b
   );
 
   return (
-    <Stack spacing={3}>
-      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
-        <Typography variant="h6">{horizonYears}-Year TCO</Typography>
-        <Typography variant="caption" color="text.secondary">
-          ({annualKm.toLocaleString()} km/yr)
-        </Typography>
-      </Box>
-
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
-        {names.map(name => {
-          const s = results.tco[name];
-          const isBest = name === bestName;
-          const colors = CARD_COLORS[name] ?? { border: 'grey', bg: 'transparent' };
-          return (
-            <Card key={name} variant="outlined" sx={{ borderLeft: 4, borderColor: colors.border, bgcolor: colors.bg }}>
-              <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="subtitle2" sx={{ color: colors.border }}>{name}</Typography>
-                  {isBest && <Chip label="Best" color="success" size="small" />}
-                </Box>
-                <Typography variant="h5">{fmt(s.mean)}</Typography>
-                <Stack spacing={0.5} sx={{ mt: 1 }}>
-                  <Typography variant="caption" color="text.secondary">Median: {fmt(s.median)}</Typography>
-                  <Typography variant="caption" color="text.secondary">Range: {fmt(s.p5)} – {fmt(s.p95)}</Typography>
-                  <Typography variant="caption" color="text.secondary">Win rate: {results.winRates[name]?.toFixed(1)}%</Typography>
-                </Stack>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </Box>
-
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 2 }}>
-        {names.includes('Electric (BEV)') && names.includes('Gasoline (Euro 95)') && (() => {
-          const saving = results.tco['Gasoline (Euro 95)'].mean - results.tco['Electric (BEV)'].mean;
-          const evWins = results.winRates['Electric (BEV)'] ?? 0;
-          return (
-            <Card variant="outlined" sx={{ bgcolor: 'action.hover' }}>
-              <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                <Typography variant="subtitle2">EV vs Gasoline</Typography>
-                <Typography variant="body2" color={saving > 0 ? 'success.main' : 'error.main'}>
-                  {saving > 0 ? `EV saves ${fmt(saving)}` : `Gasoline saves ${fmt(-saving)}`}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  EV cheaper in {evWins.toFixed(0)}% of sims
-                </Typography>
-              </CardContent>
-            </Card>
-          );
-        })()}
-        {names.includes('Electric (BEV)') && names.includes('Diesel') && (() => {
-          const saving = results.tco['Diesel'].mean - results.tco['Electric (BEV)'].mean;
-          return (
-            <Card variant="outlined" sx={{ bgcolor: 'action.hover' }}>
-              <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                <Typography variant="subtitle2">EV vs Diesel</Typography>
-                <Typography variant="body2" color={saving > 0 ? 'success.main' : 'error.main'}>
-                  {saving > 0 ? `EV saves ${fmt(saving)}` : `Diesel saves ${fmt(-saving)}`}
-                </Typography>
-              </CardContent>
-            </Card>
-          );
-        })()}
-        {names.includes('Diesel') && names.includes('Gasoline (Euro 95)') && (() => {
-          const saving = results.tco['Gasoline (Euro 95)'].mean - results.tco['Diesel'].mean;
-          return (
-            <Card variant="outlined" sx={{ bgcolor: 'action.hover' }}>
-              <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                <Typography variant="subtitle2">Diesel vs Gasoline</Typography>
-                <Typography variant="body2" color={saving > 0 ? 'success.main' : 'error.main'}>
-                  {saving > 0 ? `Diesel saves ${fmt(saving)}` : `Gasoline saves ${fmt(-saving)}`}
-                </Typography>
-              </CardContent>
-            </Card>
-          );
-        })()}
-      </Box>
-
-      <Typography variant="caption" color="text.disabled">
-        GBM calibrated on {results.dataPoints} weekly observations ({results.dateRange}).
-        {' '}mu_e95={results.calibration.muE95.toFixed(4)}, sigma_e95={results.calibration.sigmaE95.toFixed(4)},
-        {' '}rho={results.calibration.correlation.toFixed(4)}
-      </Typography>
-    </Stack>
+    <>
+      {names.map((name) => {
+        const s = results.tco[name];
+        const isBest = name === bestName;
+        const styles = VEHICLE_STYLES[name] ?? { border: 'border-l-gray-500', text: 'text-gray-400' };
+        return (
+          <Card
+            key={name}
+            className={`border-l-4 ${styles.border} bg-white/[0.03] backdrop-blur-sm hover:scale-[1.02] transition-transform duration-200 hover:shadow-lg`}
+          >
+            <CardHeader>
+              <CardTitle className={`text-sm font-medium ${styles.text}`}>
+                {name}
+              </CardTitle>
+              {isBest && (
+                <CardAction>
+                  <Badge variant="default" className="bg-emerald-600 text-white text-[10px]">
+                    Best
+                  </Badge>
+                </CardAction>
+              )}
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold tracking-tight">{fmt(s.mean)}</p>
+              <div className="mt-2 space-y-0.5">
+                <p className="text-xs text-muted-foreground">Median: {fmt(s.median)}</p>
+                <p className="text-xs text-muted-foreground">Range: {fmt(s.p5)} – {fmt(s.p95)}</p>
+                <p className="text-xs text-muted-foreground">Win rate: {results.winRates[name]?.toFixed(1)}%</p>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </>
   );
 }

@@ -1,7 +1,9 @@
 'use client';
 
-import { Box, Typography, Slider, Button, Stack, Divider } from '@mui/material';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import { Play } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { CarParams, SimConfig } from '@/lib/types';
 
 interface Props {
@@ -27,24 +29,26 @@ function ParamSlider({ label, value, min, max, step, unit, onChange }: {
     `${value} ${unit}`;
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: -0.5 }}>
-        <Typography variant="caption" color="text.secondary">{label}</Typography>
-        <Typography variant="caption" fontFamily="monospace" fontWeight={600}>{formatted}</Typography>
-      </Box>
+    <div className="py-1.5">
+      <div className="flex justify-between mb-1">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="text-xs font-mono font-semibold">{formatted}</span>
+      </div>
       <Slider
-        size="small"
-        value={value} min={min} max={max} step={step}
-        onChange={(_, v) => onChange(v as number)}
+        value={[value]}
+        min={min}
+        max={max}
+        step={step}
+        onValueChange={(val) => onChange(Array.isArray(val) ? val[0] : val)}
       />
-    </Box>
+    </div>
   );
 }
 
 const BORDER_COLORS: Record<string, string> = {
-  euro95: '#2196F3',
-  diesel: '#FF9800',
-  electric: '#4CAF50',
+  euro95: 'border-l-blue-500',
+  diesel: 'border-l-orange-500',
+  electric: 'border-l-emerald-500',
 };
 
 function CarSection({ car, index, onChange }: {
@@ -52,9 +56,9 @@ function CarSection({ car, index, onChange }: {
   onChange: (idx: number, car: CarParams) => void;
 }) {
   return (
-    <Box sx={{ borderLeft: 3, borderColor: BORDER_COLORS[car.fuelType] ?? 'grey.500', pl: 2 }}>
-      <Typography variant="subtitle2" gutterBottom>{car.name}</Typography>
-      <Stack spacing={0}>
+    <div className={`border-l-[3px] ${BORDER_COLORS[car.fuelType] ?? 'border-l-gray-500'} pl-3`}>
+      <h4 className="text-sm font-medium mb-1">{car.name}</h4>
+      <div>
         <ParamSlider label="Purchase price" value={car.purchasePrice} min={15000} max={60000} step={1000}
           unit="€" onChange={v => onChange(index, { ...car, purchasePrice: v })} />
         <ParamSlider label="Consumption" value={car.consumptionPer100km}
@@ -69,8 +73,8 @@ function CarSection({ car, index, onChange }: {
           unit="€" onChange={v => onChange(index, { ...car, annualTax: v })} />
         <ParamSlider label="Depreciation rate" value={car.depreciationRate} min={0.05} max={0.30} step={0.01}
           unit="%" onChange={v => onChange(index, { ...car, depreciationRate: v })} />
-      </Stack>
-    </Box>
+      </div>
+    </div>
   );
 }
 
@@ -82,52 +86,51 @@ export default function ParameterPanel({ cars, config, onCarsChange, onConfigCha
   };
 
   return (
-    <Stack spacing={3}>
-      <Box>
-        <Typography variant="h6" gutterBottom>Simulation</Typography>
-        <Stack spacing={0}>
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-base font-semibold mb-2">Simulation</h3>
+        <div>
           <ParamSlider label="Horizon" value={config.horizonYears} min={1} max={15} step={1} unit="yr"
             onChange={v => onConfigChange({ ...config, horizonYears: v })} />
           <ParamSlider label="Simulations" value={config.nSimulations} min={1000} max={10000} step={1000} unit="sims"
             onChange={v => onConfigChange({ ...config, nSimulations: v })} />
           <ParamSlider label="Annual driving" value={config.annualKm} min={5000} max={40000} step={1000} unit="km"
             onChange={v => onConfigChange({ ...config, annualKm: v })} />
-        </Stack>
-      </Box>
+        </div>
+      </div>
 
-      <Divider />
+      <Separator />
 
-      <Box>
-        <Typography variant="h6" gutterBottom>Electricity</Typography>
-        <Stack spacing={0}>
+      <div>
+        <h3 className="text-base font-semibold mb-2">Electricity</h3>
+        <div>
           <ParamSlider label="Current price" value={config.electricityPrice} min={0.10} max={0.50} step={0.01} unit="€/kWh"
             onChange={v => onConfigChange({ ...config, electricityPrice: v })} />
           <ParamSlider label="Home charging share" value={config.homeChargingShare} min={0} max={1} step={0.05} unit="%"
             onChange={v => onConfigChange({ ...config, homeChargingShare: v })} />
-        </Stack>
-      </Box>
+        </div>
+      </div>
 
-      <Divider />
+      <Separator />
 
-      <Box>
-        <Typography variant="h6" gutterBottom>Vehicles</Typography>
-        <Stack spacing={2}>
+      <div>
+        <h3 className="text-base font-semibold mb-2">Vehicles</h3>
+        <div className="space-y-4">
           {cars.map((car, i) => (
             <CarSection key={car.fuelType} car={car} index={i} onChange={updateCar} />
           ))}
-        </Stack>
-      </Box>
+        </div>
+      </div>
 
       <Button
-        variant="contained"
-        size="large"
-        fullWidth
+        className="w-full"
+        size="lg"
         onClick={onRun}
         disabled={running}
-        startIcon={<PlayArrowIcon />}
       >
+        <Play className="w-4 h-4 mr-2" />
         {running ? 'Running...' : 'Run Simulation'}
       </Button>
-    </Stack>
+    </div>
   );
 }

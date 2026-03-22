@@ -79,20 +79,23 @@ export async function upsertPrices(prices: FuelPriceRow[]): Promise<number> {
   for (let i = 0; i < prices.length; i += BATCH_SIZE) {
     const batch = prices.slice(i, i + BATCH_SIZE);
 
-    // Build a VALUES clause for the batch
-    const values = batch
-      .map(
-        (p) =>
-          `('${p.date}', '${p.country}', '${p.fuelType}', ${p.priceEurL})`,
-      )
-      .join(',\n');
+    // Build parameterized VALUES clause to prevent SQL injection
+    const params: unknown[] = [];
+    const placeholders = batch
+      .map((p) => {
+        const offset = params.length;
+        params.push(p.date, p.country, p.fuelType, p.priceEurL);
+        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4})`;
+      })
+      .join(', ');
 
-    await sql.query(`
-      INSERT INTO fuel_prices (date, country, fuel_type, price_eur_l)
-      VALUES ${values}
-      ON CONFLICT (date, country, fuel_type)
-      DO UPDATE SET price_eur_l = EXCLUDED.price_eur_l
-    `);
+    await sql.query(
+      `INSERT INTO fuel_prices (date, country, fuel_type, price_eur_l)
+       VALUES ${placeholders}
+       ON CONFLICT (date, country, fuel_type)
+       DO UPDATE SET price_eur_l = EXCLUDED.price_eur_l`,
+      params,
+    );
 
     totalUpserted += batch.length;
   }
@@ -153,18 +156,23 @@ export async function upsertElectricityPrices(
   for (let i = 0; i < prices.length; i += BATCH_SIZE) {
     const batch = prices.slice(i, i + BATCH_SIZE);
 
-    const values = batch
-      .map(
-        (p) => `('${p.date}', '${p.country}', ${p.priceEurKwh})`,
-      )
-      .join(',\n');
+    // Build parameterized VALUES clause to prevent SQL injection
+    const params: unknown[] = [];
+    const placeholders = batch
+      .map((p) => {
+        const offset = params.length;
+        params.push(p.date, p.country, p.priceEurKwh);
+        return `($${offset + 1}, $${offset + 2}, $${offset + 3})`;
+      })
+      .join(', ');
 
-    await sql.query(`
-      INSERT INTO electricity_prices (date, country, price_eur_kwh)
-      VALUES ${values}
-      ON CONFLICT (date, country)
-      DO UPDATE SET price_eur_kwh = EXCLUDED.price_eur_kwh
-    `);
+    await sql.query(
+      `INSERT INTO electricity_prices (date, country, price_eur_kwh)
+       VALUES ${placeholders}
+       ON CONFLICT (date, country)
+       DO UPDATE SET price_eur_kwh = EXCLUDED.price_eur_kwh`,
+      params,
+    );
 
     totalUpserted += batch.length;
   }

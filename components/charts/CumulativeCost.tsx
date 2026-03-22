@@ -1,6 +1,5 @@
 'use client';
 
-import { Typography } from '@mui/material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface Props {
@@ -28,7 +27,7 @@ export default function CumulativeCost({ cumulativeCost, horizonYears }: Props) 
 
   return (
     <div>
-      <Typography variant="subtitle2" gutterBottom>Cumulative Spending Over Time (Median)</Typography>
+      <h3 className="text-sm font-medium mb-2">Cumulative Spending Over Time (Median)</h3>
       <ResponsiveContainer width="100%" height={250}>
         <LineChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
           <CartesianGrid strokeDasharray="3 3" opacity={0.3} />

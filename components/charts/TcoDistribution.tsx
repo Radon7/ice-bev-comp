@@ -1,7 +1,6 @@
 'use client';
 
-import { Typography } from '@mui/material';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { TcoStats } from '@/lib/types';
 
 interface Props {
@@ -48,9 +47,9 @@ export default function TcoDistribution({ tco, horizonYears, annualKm }: Props) 
 
   return (
     <div>
-      <Typography variant="subtitle2" gutterBottom>
+      <h3 className="text-sm font-medium mb-2">
         TCO Distribution ({annualKm.toLocaleString()} km/yr, {horizonYears}-yr)
-      </Typography>
+      </h3>
       <ResponsiveContainer width="100%" height={250}>
         <BarChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
           <CartesianGrid strokeDasharray="3 3" opacity={0.3} />

@@ -1,104 +1,127 @@
 import { NextResponse } from 'next/server';
-import * as XLSX from 'xlsx';
+import type { NextRequest } from 'next/server';
+import { getPrices, getLatestDate, upsertPrices } from '@/lib/price-store';
+import { fetchAllECPrices, fetchCountryPrices } from '@/lib/ec-fetcher';
+import { HISTORICAL_PRICES } from '@/lib/historical-data';
 
-const EC_OIL_BULLETIN_URL =
-  'https://energy.ec.europa.eu/document/download/906e60ca-8b6a-44e7-8589-652854d2fd3f_en';
+/** Maximum data age before we consider it stale and attempt a live refresh. */
+const STALE_DAYS = 8;
 
-// Italy column indices in the "Prices with taxes" sheet (0-based)
-const IT_EURO95_COL = 128;
-const IT_DIESEL_COL = 129;
-const DATA_START_ROW = 3; // 0-based row index where price data begins (row 4 in 1-based)
+function isStale(latestDate: string | null): boolean {
+  if (!latestDate) return true;
+  const age = Date.now() - new Date(latestDate).getTime();
+  return age > STALE_DAYS * 24 * 60 * 60 * 1000;
+}
 
-// In-memory cache: refresh at most once per 24 hours
-let cache: { data: { date: string; euro95: number; diesel: number }[]; fetchedAt: number } | null = null;
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+/**
+ * GET /api/prices?country=IT
+ *
+ * Returns weekly fuel prices (euro95 + diesel) for a country.
+ * Default country: IT (backward compatible with the original API).
+ *
+ * Fallback chain:
+ *  1. Postgres database (populated by weekly cron)
+ *  2. Live EC Oil Bulletin fetch (safety net if DB is empty/stale)
+ *  3. Embedded historical data (Italy only, last resort)
+ */
+export async function GET(request: NextRequest) {
+  const country = request.nextUrl.searchParams.get('country')?.toUpperCase() || 'IT';
 
-export async function GET() {
-  // Return cache if fresh
-  if (cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
-    return NextResponse.json({
-      source: 'ec_oil_bulletin',
-      cached: true,
-      count: cache.data.length,
-      prices: cache.data,
-    });
+  // --- Tier 1: Read from database ---
+  try {
+    const prices = await getPrices(country);
+    if (prices && prices.length > 0) {
+      const latestDate = await getLatestDate(country);
+
+      return NextResponse.json({
+        source: 'database',
+        cached: true,
+        stale: isStale(latestDate),
+        country,
+        count: prices.length,
+        prices,
+      });
+    }
+  } catch {
+    // DB unavailable — fall through to tier 2
   }
 
+  // --- Tier 2: Live fetch from EC Oil Bulletin ---
   try {
-    const res = await fetch(EC_OIL_BULLETIN_URL, { signal: AbortSignal.timeout(60_000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (country === 'IT') {
+      // For Italy, try the quick single-country path first
+      const prices = await fetchCountryPrices('IT');
+      if (prices.length > 0) {
+        // Also persist to DB in the background (best-effort)
+        fetchAllECPrices()
+          .then((allRows) => upsertPrices(allRows))
+          .catch(() => {});
 
-    const buf = await res.arrayBuffer();
-    const wb = XLSX.read(buf, { type: 'array' });
+        return NextResponse.json({
+          source: 'ec_oil_bulletin',
+          cached: false,
+          country,
+          count: prices.length,
+          prices,
+        });
+      }
+    } else {
+      // For other countries, we need to fetch + parse all and then filter
+      const allRows = await fetchAllECPrices();
 
-    const ws = wb.Sheets['Prices with taxes'];
-    if (!ws) throw new Error('Sheet "Prices with taxes" not found');
+      // Persist everything (best-effort)
+      upsertPrices(allRows).catch(() => {});
 
-    const rows: (string | number | null)[][] = XLSX.utils.sheet_to_json(ws, {
-      header: 1,
-      raw: true,
-      defval: null,
-    });
-
-    const prices: { date: string; euro95: number; diesel: number }[] = [];
-
-    for (let i = DATA_START_ROW; i < rows.length; i++) {
-      const row = rows[i];
-      const dateVal = row[0];
-      const e95Val = row[IT_EURO95_COL];
-      const dieselVal = row[IT_DIESEL_COL];
-
-      if (dateVal == null || e95Val == null || dieselVal == null) continue;
-
-      // Parse date — XLSX may give a serial number or string
-      let dateStr: string;
-      if (typeof dateVal === 'number') {
-        // Excel serial date → JS Date
-        const d = XLSX.SSF.parse_date_code(dateVal);
-        dateStr = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`;
-      } else {
-        const d = new Date(String(dateVal));
-        if (isNaN(d.getTime())) continue;
-        dateStr = d.toISOString().slice(0, 10);
+      // Filter to requested country
+      const byDate = new Map<string, { euro95?: number; diesel?: number }>();
+      for (const row of allRows) {
+        if (row.country !== country) continue;
+        if (row.fuelType !== 'euro95' && row.fuelType !== 'diesel') continue;
+        let entry = byDate.get(row.date);
+        if (!entry) {
+          entry = {};
+          byDate.set(row.date, entry);
+        }
+        if (row.fuelType === 'euro95') entry.euro95 = row.priceEurL;
+        if (row.fuelType === 'diesel') entry.diesel = row.priceEurL;
       }
 
-      const e95 = Number(e95Val);
-      const diesel = Number(dieselVal);
-      if (isNaN(e95) || isNaN(diesel) || e95 <= 0 || diesel <= 0) continue;
+      const prices: { date: string; euro95: number; diesel: number }[] = [];
+      for (const [date, { euro95, diesel }] of byDate) {
+        if (euro95 != null && diesel != null) {
+          prices.push({ date, euro95, diesel });
+        }
+      }
+      prices.sort((a, b) => a.date.localeCompare(b.date));
 
-      // Prices are in €/1000L → convert to €/L, round to 3 decimals
-      prices.push({
-        date: dateStr,
-        euro95: Math.round((e95 / 1000) * 1000) / 1000,
-        diesel: Math.round((diesel / 1000) * 1000) / 1000,
-      });
+      if (prices.length > 0) {
+        return NextResponse.json({
+          source: 'ec_oil_bulletin',
+          cached: false,
+          country,
+          count: prices.length,
+          prices,
+        });
+      }
     }
-
-    // Sort by date ascending
-    prices.sort((a, b) => a.date.localeCompare(b.date));
-
-    cache = { data: prices, fetchedAt: Date.now() };
-
-    return NextResponse.json({
-      source: 'ec_oil_bulletin',
-      cached: false,
-      count: prices.length,
-      prices,
-    });
-  } catch (err) {
-    // If we have stale cache, return it
-    if (cache) {
-      return NextResponse.json({
-        source: 'ec_oil_bulletin',
-        cached: true,
-        stale: true,
-        count: cache.data.length,
-        prices: cache.data,
-      });
-    }
-    return NextResponse.json(
-      { error: `Failed to fetch EC Oil Bulletin: ${err instanceof Error ? err.message : err}` },
-      { status: 502 },
-    );
+  } catch {
+    // Live fetch failed — fall through to tier 3
   }
+
+  // --- Tier 3: Embedded fallback (Italy only) ---
+  if (country === 'IT') {
+    return NextResponse.json({
+      source: 'embedded_fallback',
+      cached: true,
+      stale: true,
+      country,
+      count: HISTORICAL_PRICES.length,
+      prices: HISTORICAL_PRICES,
+    });
+  }
+
+  return NextResponse.json(
+    { error: `No price data available for country: ${country}` },
+    { status: 404 },
+  );
 }

@@ -61,7 +61,7 @@ All default values are defined in `lib/types.ts`.
 
 ## Data Sources
 
-- **Fuel prices**: EC Oil Bulletin weekly data (Italy, taxes included). Live API with embedded fallback (~1,000 weekly observations since 2005)
+- **Fuel prices**: EC Oil Bulletin weekly data for all 28 EU countries (taxes included). Stored in Postgres, refreshed weekly by cron. 3-tier fallback: Postgres → live EC fetch → embedded snapshot (~1,000 weekly observations since 2005, Italy only). See [Database](./database.md) for details
 - **Electricity prices**: Eurostat `nrg_pc_204` semi-annual data (Italian household, 2500-4999 kWh band, all taxes included). Live API with embedded fallback (35 observations since 2008)
 
 ## Italian Market Specifics
@@ -73,6 +73,8 @@ All default values are defined in `lib/types.ts`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `POSTGRES_URL` | — | Postgres connection string (e.g. `postgresql://user:pass@host:5432/db`). Required for database tier. If unset, the app falls back to live EC fetch + embedded data |
+| `CRON_SECRET` | — | Secret token for authenticating the `/api/prices/refresh` cron endpoint. Set automatically by Vercel for cron jobs |
 | `NEXT_PUBLIC_ELECTRICITY_DRIFT` | `0` | Annual electricity price drift for GBM simulation. Set in Vercel dashboard or `.env.local`. Inlined at build time |
 
 ## TypeScript Types

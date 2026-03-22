@@ -141,16 +141,23 @@ Runs every **Monday at 14:00 UTC**. The EC Oil Bulletin is typically updated on 
 
 ## GET /api/electricity-prices
 
-Fetches live electricity prices from the Eurostat `nrg_pc_204` dataset.
+Returns semi-annual electricity prices for any EU country, with a 3-tier fallback strategy (same pattern as fuel prices).
 
 **File**: `app/api/electricity-prices/route.ts`
+
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `country` | string | `IT` | ISO 3166-1 alpha-2 country code (e.g. `DE`, `FR`, `ES`). Case-insensitive |
 
 ### Response
 
 ```json
 {
-  "source": "eurostat_nrg_pc_204",
-  "cached": false,
+  "source": "database",
+  "cached": true,
+  "country": "IT",
   "count": 35,
   "prices": [
     {
@@ -163,9 +170,9 @@ Fetches live electricity prices from the Eurostat `nrg_pc_204` dataset.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `source` | string | Always `"eurostat_nrg_pc_204"` |
-| `cached` | boolean | Whether the response came from cache |
-| `stale` | boolean | Present and `true` when returning expired cache after a fetch failure |
+| `source` | string | `"database"`, `"eurostat_nrg_pc_204"`, or `"embedded_fallback"` |
+| `cached` | boolean | Whether the response came from a stored source |
+| `country` | string | Country code used for the query |
 | `count` | number | Number of price records |
 | `prices` | ElectricityPricePoint[] | Semi-annual price records |
 
@@ -176,30 +183,91 @@ Fetches live electricity prices from the Eurostat `nrg_pc_204` dataset.
 | `date` | string | Period label (e.g. `"2024-S1"`, `"2023-S2"`) |
 | `price` | number | EUR per kWh (all taxes included, 4 decimal places) |
 
+### 3-Tier Fallback
+
+| Tier | Source | When used |
+|------|--------|-----------|
+| 1 | **Postgres database** | Default path. Data populated by monthly cron refresh |
+| 2 | **Live Eurostat API** | If DB is empty or unavailable for the requested country |
+| 3 | **Embedded historical data** | Last resort, Italy only. Compiled-in snapshot (~35 semi-annual observations) |
+
 ### Data Source
 
-The endpoint queries the Eurostat JSON API:
+The endpoint (and cron) queries the Eurostat JSON API:
 - **Dataset**: `nrg_pc_204` (electricity prices for household consumers)
-- **Country**: Italy (`geo=IT`)
 - **Unit**: EUR per kWh
 - **Tax band**: All taxes included (`tax=I_TAX`)
 - **Consumption band**: 2,500-4,999 kWh/year (`nrg_cons=KWH2500-4999`)
-- **Timeout**: 30 seconds
+- **Countries**: All 28 EU countries (EU27 + UK)
 
-### Caching
+### Supported Countries
 
-- Responses are cached in-memory for **24 hours**
-- On fetch failure, stale cache is returned if available (with `stale: true` flag)
-- Cache key is time-based (not request-based)
+All 28 EU countries are supported (EU27 + UK): AT, BE, BG, CY, CZ, DE, DK, EE, EL, ES, FI, FR, HR, HU, IE, IT, LT, LU, LV, MT, NL, PL, PT, RO, SE, SI, SK, UK.
+
+Note: Greece uses `EL` in Eurostat (mapped from `GR` automatically).
 
 ### Error Handling
 
 | Scenario | Behavior |
 |----------|----------|
-| Eurostat API unreachable | Returns stale cache if available; otherwise 502 |
-| Parse error | Returns stale cache if available; otherwise 502 |
-| No cached data | Returns error JSON with status 502 |
+| DB unavailable | Falls through to tier 2 (live Eurostat fetch) |
+| Eurostat API unreachable | Falls through to tier 3 (embedded, Italy only) |
+| Country not found in any tier | Returns 404 with error message |
 
-### Fallback
+---
 
-If the API is unavailable, the simulation engine falls back to embedded historical data in `lib/historical-electricity-data.ts` (35 semi-annual observations since 2008).
+## POST /api/electricity-prices/refresh
+
+Cron endpoint that fetches electricity prices from the Eurostat API for all EU countries and upserts them into the Postgres database. Also accepts GET.
+
+**File**: `app/api/electricity-prices/refresh/route.ts`
+
+### Authentication
+
+Protected by `CRON_SECRET` environment variable. Vercel crons send this automatically.
+
+```
+Authorization: Bearer <CRON_SECRET>
+```
+
+Returns 401 if the secret is missing or incorrect.
+
+### Response (success)
+
+```json
+{
+  "ok": true,
+  "rowsUpserted": 952,
+  "countries": 28,
+  "durationMs": 2500
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ok` | boolean | `true` on success |
+| `rowsUpserted` | number | Total rows inserted/updated in the database |
+| `countries` | number | Number of unique countries fetched |
+| `durationMs` | number | Total execution time in milliseconds |
+
+### Response (failure)
+
+```json
+{
+  "ok": false,
+  "error": "Error: Eurostat API timeout",
+  "durationMs": 31000
+}
+```
+
+Returns status 502. The error is also logged in the `refresh_log` table with `source = 'electricity_prices'`.
+
+### Schedule
+
+Configured in `vercel.json`:
+
+```json
+{ "path": "/api/electricity-prices/refresh", "schedule": "0 15 1 * *" }
+```
+
+Runs on the **1st of each month at 15:00 UTC**. Eurostat publishes data semi-annually, so monthly ensures timely capture without over-fetching.

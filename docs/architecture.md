@@ -41,15 +41,20 @@ The app is a **client-side rendered** Next.js application with API routes for li
 │    3. Embedded historical data (Italy only, last resort) │
 │                                                          │
 │  Electricity prices:                                     │
-│    - /api/electricity-prices (Eurostat)                   │
-│    - Fallback: lib/historical-electricity-data.ts        │
+│    1. Postgres DB  ←  monthly cron refresh               │
+│    2. Live Eurostat API fetch                            │
+│    3. Embedded historical data (Italy only, last resort) │
 └──────────────────────────────────────────────────────────┘
        ▲
-       │  Mondays 14:00 UTC (Vercel cron)
+       │  Vercel crons
 ┌──────────────────────────────────────────────────────────┐
-│  /api/prices/refresh                                     │
+│  /api/prices/refresh           (Mon 14:00 UTC, weekly)   │
 │  Downloads EC Oil Bulletin XLSX → parses all 28          │
 │  countries × 6 fuel types → upserts into Postgres        │
+│                                                          │
+│  /api/electricity-prices/refresh (1st of month, 15:00)   │
+│  Queries Eurostat JSON API → parses all 28 countries     │
+│  → upserts into Postgres                                 │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -61,7 +66,9 @@ app/
 │   ├── prices/
 │   │   ├── route.ts                   Fuel prices API (Postgres → EC live → embedded fallback)
 │   │   └── refresh/route.ts           Cron endpoint: refresh all countries from EC Oil Bulletin
-│   └── electricity-prices/route.ts    Server-side API (live electricity prices)
+│   └── electricity-prices/
+│       ├── route.ts                   Electricity prices API (Postgres → Eurostat live → embedded fallback)
+│       └── refresh/route.ts           Cron endpoint: refresh all countries from Eurostat
 ├── layout.tsx                         Root layout, fonts, metadata
 ├── page.tsx                           Main page - state management & layout
 └── globals.css                        Minimal global styles
@@ -87,7 +94,8 @@ components/
 lib/
 ├── db.ts                              Postgres client (pg Pool, tagged template SQL)
 ├── ec-fetcher.ts                      Dynamic XLSX parser for all EU countries (6 fuel types)
-├── price-store.ts                     Data access layer (getPrices, upsertPrices, logRefresh)
+├── eurostat-fetcher.ts                Eurostat JSON API fetcher for electricity prices (all EU countries)
+├── price-store.ts                     Data access layer (fuel + electricity prices, refresh logging)
 ├── types.ts                           TypeScript interfaces & default values
 ├── simulation.ts                      Monte Carlo engine (core logic)
 ├── historical-data.ts                 Embedded EC Oil Bulletin snapshot (~1,000 weekly obs)
@@ -96,11 +104,12 @@ lib/
 
 scripts/
 ├── migrations/
-│   └── 001_create_tables.sql          Database schema (fuel_prices + refresh_log)
+│   ├── 001_create_tables.sql          Database schema (fuel_prices + refresh_log)
+│   └── 002_create_electricity_prices.sql  Electricity prices table + refresh_log source column
 ├── migrate.ts                         Migration runner (npx tsx scripts/migrate.ts)
 └── inspect-bulletin.ts                XLSX structure inspector (dev tool)
 
-vercel.json                            Cron schedule (weekly refresh)
+vercel.json                            Cron schedules (weekly fuel + monthly electricity)
 ```
 
 ## Data Flow
@@ -114,15 +123,20 @@ vercel.json                            Cron schedule (weekly refresh)
 4. **User clicks "Run Simulation"**: `runSimulation()` executes client-side with current state
 5. **Results propagate**: All child components re-render with new `SimResults` data
 
-### Database Refresh Flow
+### Database Refresh Flows
 
-A Vercel cron job triggers `/api/prices/refresh` every Monday at 14:00 UTC:
+Two Vercel cron jobs keep the database current:
 
-1. The cron sends a request with `Authorization: Bearer <CRON_SECRET>`
-2. `ec-fetcher.ts` downloads the EC Oil Bulletin XLSX (~3 MB)
-3. The dynamic parser auto-discovers country/fuel columns from XLSX headers
-4. All rows are upserted into `fuel_prices` (ON CONFLICT update)
-5. The result is logged in `refresh_log` for monitoring
+**Fuel prices** — `/api/prices/refresh` (every Monday at 14:00 UTC):
+1. `ec-fetcher.ts` downloads the EC Oil Bulletin XLSX (~3 MB)
+2. The dynamic parser auto-discovers country/fuel columns from XLSX headers
+3. All rows are upserted into `fuel_prices` (ON CONFLICT update)
+4. The result is logged in `refresh_log` with `source = 'fuel_prices'`
+
+**Electricity prices** — `/api/electricity-prices/refresh` (1st of month at 15:00 UTC):
+1. `eurostat-fetcher.ts` queries the Eurostat JSON API for all 28 EU countries
+2. All rows are upserted into `electricity_prices` (ON CONFLICT update)
+3. The result is logged in `refresh_log` with `source = 'electricity_prices'`
 
 ## Rendering Strategy
 
@@ -130,7 +144,8 @@ A Vercel cron job triggers `/api/prices/refresh` every Monday at 14:00 UTC:
 - **Server-side**: API routes run on the server:
   - `/api/prices` — reads fuel prices from Postgres (with live EC fetch and embedded fallback). Supports `?country=` parameter for any EU country
   - `/api/prices/refresh` — cron endpoint that refreshes all countries from the EC Oil Bulletin into Postgres
-  - `/api/electricity-prices` — fetches Eurostat JSON API for Italian household electricity prices
+  - `/api/electricity-prices` — reads electricity prices from Postgres (with live Eurostat fetch and embedded fallback). Supports `?country=` parameter for any EU country
+  - `/api/electricity-prices/refresh` — cron endpoint that refreshes all countries from Eurostat into Postgres
 - **No SSR for simulation**: All Monte Carlo computation happens in the browser to avoid server load
 
 ## Theming

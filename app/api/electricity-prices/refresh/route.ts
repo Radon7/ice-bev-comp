@@ -1,18 +1,19 @@
 import { NextResponse } from 'next/server';
-import { fetchAllECPrices } from '@/lib/ec-fetcher';
-import { upsertPrices, logRefresh } from '@/lib/price-store';
+import { fetchAllElectricityPrices } from '@/lib/eurostat-fetcher';
+import { upsertElectricityPrices, logRefresh } from '@/lib/price-store';
 
 /**
- * POST /api/prices/refresh
+ * GET/POST /api/electricity-prices/refresh
  *
- * Cron endpoint that downloads the EC Oil Bulletin, parses all countries,
- * and upserts everything into the database.
+ * Cron endpoint that fetches electricity prices from Eurostat for all EU countries
+ * and upserts them into the database.
  *
- * Protected by CRON_SECRET — Vercel crons send this automatically.
- * Also accepts GET for manual triggers.
+ * Runs monthly (1st of each month, 15:00 UTC). Eurostat updates semi-annually
+ * but the exact timing varies, so monthly catches updates promptly.
+ *
+ * Protected by CRON_SECRET.
  */
 async function handleRefresh(request: Request) {
-  // Verify auth
   const authHeader = request.headers.get('authorization');
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -21,13 +22,10 @@ async function handleRefresh(request: Request) {
   const startedAt = Date.now();
 
   try {
-    const prices = await fetchAllECPrices();
-    const rowsUpserted = await upsertPrices(prices);
-    await logRefresh({ source: 'fuel_prices', rowsUpserted });
+    const prices = await fetchAllElectricityPrices();
+    const rowsUpserted = await upsertElectricityPrices(prices);
+    await logRefresh({ source: 'electricity_prices', rowsUpserted });
 
-    const durationMs = Date.now() - startedAt;
-
-    // Count unique countries
     const countries = new Set(prices.map((p) => p.country));
 
     return NextResponse.json({
@@ -35,7 +33,7 @@ async function handleRefresh(request: Request) {
       rowsUpserted,
       countries: countries.size,
       totalParsed: prices.length,
-      durationMs,
+      durationMs: Date.now() - startedAt,
     });
   } catch (err) {
     let message: string;
@@ -46,10 +44,8 @@ async function handleRefresh(request: Request) {
     } else {
       message = String(err);
     }
-    console.error('Refresh failed:', err);
-    await logRefresh({ source: 'fuel_prices', error: message }).catch(() => {
-      // If even logging fails (DB down), just continue
-    });
+    console.error('Electricity refresh failed:', err);
+    await logRefresh({ source: 'electricity_prices', error: message }).catch(() => {});
 
     return NextResponse.json(
       { ok: false, error: message, durationMs: Date.now() - startedAt },

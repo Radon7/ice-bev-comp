@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import ThemeRegistry from "@/components/ThemeRegistry";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
 import "./globals.css";
@@ -20,6 +22,8 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className={cn("font-sans", geist.variable)}>
       <body>
         <ThemeRegistry>{children}</ThemeRegistry>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

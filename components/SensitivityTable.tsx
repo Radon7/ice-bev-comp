@@ -1,5 +1,10 @@
 'use client';
 
+import {
+  Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  LinearProgress, Stack,
+} from '@mui/material';
+
 interface Props {
   sensitivityEvPrice: { price: number; winRate: number }[];
   sensitivityElecPrice: { price: number; winRate: number }[];
@@ -7,65 +12,80 @@ interface Props {
 
 function WinBar({ rate }: { rate: number }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-        <div
-          className="h-2 rounded-full transition-all"
-          style={{
-            width: `${Math.min(rate, 100)}%`,
-            backgroundColor: rate > 50 ? '#4CAF50' : '#EF4444',
-          }}
-        />
-      </div>
-      <span className="text-xs font-mono w-10">{rate.toFixed(0)}%</span>
-    </div>
+    <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 140 }}>
+      <LinearProgress
+        variant="determinate"
+        value={Math.min(rate, 100)}
+        sx={{
+          flex: 1,
+          height: 8,
+          borderRadius: 4,
+          bgcolor: 'action.hover',
+          '& .MuiLinearProgress-bar': {
+            borderRadius: 4,
+            bgcolor: rate > 50 ? 'success.main' : 'error.main',
+          },
+        }}
+      />
+      <Typography variant="caption" fontFamily="monospace" sx={{ minWidth: 32 }}>
+        {rate.toFixed(0)}%
+      </Typography>
+    </Stack>
   );
 }
 
 export default function SensitivityTable({ sensitivityEvPrice, sensitivityElecPrice }: Props) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div>
-        <h3 className="text-sm font-semibold mb-2">EV Purchase Price Sensitivity</h3>
-        <p className="text-xs text-gray-500 mb-2">% of simulations where EV beats gasoline</p>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-left">
-              <th className="py-1">EV Price</th>
-              <th className="py-1">Win Rate</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sensitivityEvPrice.map(row => (
-              <tr key={row.price} className="border-b border-gray-100 dark:border-gray-800">
-                <td className="py-1 font-mono">{`€${row.price.toLocaleString()}`}</td>
-                <td className="py-1"><WinBar rate={row.winRate} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' }, gap: 3 }}>
+      <Box>
+        <Typography variant="subtitle2" gutterBottom>EV Purchase Price Sensitivity</Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+          % of simulations where EV beats gasoline
+        </Typography>
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>EV Price</TableCell>
+                <TableCell>Win Rate</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {sensitivityEvPrice.map(row => (
+                <TableRow key={row.price}>
+                  <TableCell sx={{ fontFamily: 'monospace' }}>{`€${row.price.toLocaleString()}`}</TableCell>
+                  <TableCell><WinBar rate={row.winRate} /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Box>
 
-      <div>
-        <h3 className="text-sm font-semibold mb-2">Electricity Price Sensitivity</h3>
-        <p className="text-xs text-gray-500 mb-2">% of simulations where EV beats gasoline</p>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-left">
-              <th className="py-1">Elec. Price</th>
-              <th className="py-1">Win Rate</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sensitivityElecPrice.map(row => (
-              <tr key={row.price} className="border-b border-gray-100 dark:border-gray-800">
-                <td className="py-1 font-mono">{`€${row.price.toFixed(2)}/kWh`}</td>
-                <td className="py-1"><WinBar rate={row.winRate} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      <Box>
+        <Typography variant="subtitle2" gutterBottom>Electricity Price Sensitivity</Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+          % of simulations where EV beats gasoline
+        </Typography>
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Elec. Price</TableCell>
+                <TableCell>Win Rate</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {sensitivityElecPrice.map(row => (
+                <TableRow key={row.price}>
+                  <TableCell sx={{ fontFamily: 'monospace' }}>{`€${row.price.toFixed(2)}/kWh`}</TableCell>
+                  <TableCell><WinBar rate={row.winRate} /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Box>
+    </Box>
   );
 }

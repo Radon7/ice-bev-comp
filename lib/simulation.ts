@@ -220,7 +220,7 @@ export function runSimulation(
     ? electricityPrices
     : HISTORICAL_ELECTRICITY_PRICES;
   const elecPricesSeries = elecData.map(p => p.price);
-  const muElec = 0;
+  const muElec = config.electricityDrift;
 
   // Use latest historical price as S0 if available, otherwise user config
   const S0_elec = elecPricesSeries.length > 0

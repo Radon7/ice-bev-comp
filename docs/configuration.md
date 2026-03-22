@@ -12,6 +12,7 @@ All default values are defined in `lib/types.ts`.
 | `electricityPrice` | 0.33 | 0.10-0.60 | Base electricity price (EUR/kWh) |
 | `homeChargingShare` | 0.80 | 0-1 | Fraction of charging done at home |
 | `publicChargingPremium` | 1.50 | 1-3 | Multiplier for public charging cost |
+| `electricityDrift` | 0 | - | Annual price drift for electricity (0 = no trend assumption). Overridable via `NEXT_PUBLIC_ELECTRICITY_DRIFT` env var |
 | `electricityVol` | 0.08 | - | Annual price volatility for electricity (parametric) |
 
 ## Vehicle Parameters (`CarParams`)
@@ -81,9 +82,10 @@ interface SimConfig {
   horizonYears: number;
   annualKm: number;
   electricityPrice: number;
+  electricityDrift: number;
+  electricityVol: number;
   homeChargingShare: number;
   publicChargingPremium: number;
-  electricityVol: number;
 }
 
 interface PriceData {

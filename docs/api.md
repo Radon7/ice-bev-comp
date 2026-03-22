@@ -2,17 +2,25 @@
 
 ## GET /api/prices
 
-Fetches live fuel prices from the European Commission Oil Bulletin.
+Returns weekly fuel prices (Euro 95 + Diesel) for any EU country, with a 3-tier fallback strategy.
 
 **File**: `app/api/prices/route.ts`
+
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `country` | string | `IT` | ISO 3166-1 alpha-2 country code (e.g. `DE`, `FR`, `ES`). Case-insensitive |
 
 ### Response
 
 ```json
 {
-  "source": "ec_oil_bulletin",
-  "cached": false,
-  "count": 52,
+  "source": "database",
+  "cached": true,
+  "stale": false,
+  "country": "IT",
+  "count": 1042,
   "prices": [
     {
       "date": "2025-03-10",
@@ -25,8 +33,10 @@ Fetches live fuel prices from the European Commission Oil Bulletin.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `source` | string | Always `"ec_oil_bulletin"` |
-| `cached` | boolean | Whether the response came from cache |
+| `source` | string | `"database"`, `"ec_oil_bulletin"`, or `"embedded_fallback"` |
+| `cached` | boolean | Whether the response came from a stored source |
+| `stale` | boolean | Present when data is older than 8 days |
+| `country` | string | Country code used for the query |
 | `count` | number | Number of price records |
 | `prices` | PriceData[] | Weekly price records |
 
@@ -38,30 +48,94 @@ Fetches live fuel prices from the European Commission Oil Bulletin.
 | `euro95` | number | EUR per liter |
 | `diesel` | number | EUR per liter |
 
-### Data Source
+### 3-Tier Fallback
 
-The endpoint downloads an Excel file from the EC Oil Bulletin:
-- **Sheet**: "Prices with taxes"
-- **Country**: Italy (columns 128-129)
-- **Conversion**: Raw data is in EUR/1000L, divided by 1000 to get EUR/L
+| Tier | Source | When used |
+|------|--------|-----------|
+| 1 | **Postgres database** | Default path. Data populated by weekly cron refresh |
+| 2 | **Live EC Oil Bulletin** | If DB is empty or unavailable. Parsed data is also persisted to DB in the background |
+| 3 | **Embedded historical data** | Last resort, Italy only. Compiled-in snapshot (~1,000 weekly observations) |
 
-### Caching
+Data is considered stale if the most recent record is older than 8 days. Stale data is still returned (with `stale: true`) while a background refresh is not triggered automatically on reads.
 
-- Responses are cached in-memory for **24 hours**
-- On fetch failure, stale cache is returned if available
-- Cache key is time-based (not request-based)
+### Supported Countries
+
+All 28 EU countries are supported (EU27 + UK): AT, BE, BG, CY, CZ, DE, DK, EE, EL, ES, FI, FR, HR, HU, IE, IT, LT, LU, LV, MT, NL, PL, PT, RO, SE, SI, SK, UK.
 
 ### Error Handling
 
 | Scenario | Behavior |
 |----------|----------|
-| EC site unreachable | Returns stale cache if available; otherwise 500 |
-| Parse error | Returns stale cache if available; otherwise 500 |
-| No cached data | Returns error JSON with status 500 |
+| DB unavailable | Falls through to tier 2 (live EC fetch) |
+| EC site unreachable | Falls through to tier 3 (embedded, Italy only) |
+| Country not found in any tier | Returns 404 with error message |
 
-### Fallback
+---
 
-If the API is unavailable, the simulation engine falls back to embedded historical data in `lib/historical-data.ts` (~1,000 weekly observations).
+## POST /api/prices/refresh
+
+Cron endpoint that downloads the EC Oil Bulletin, parses all countries and fuel types, and upserts everything into the Postgres database. Also accepts GET.
+
+**File**: `app/api/prices/refresh/route.ts`
+
+### Authentication
+
+Protected by `CRON_SECRET` environment variable. Vercel crons send this automatically.
+
+```
+Authorization: Bearer <CRON_SECRET>
+```
+
+Returns 401 if the secret is missing or incorrect.
+
+### Response (success)
+
+```json
+{
+  "ok": true,
+  "rowsUpserted": 128000,
+  "countries": 28,
+  "totalParsed": 128000,
+  "durationMs": 12500
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ok` | boolean | `true` on success |
+| `rowsUpserted` | number | Total rows inserted/updated in the database |
+| `countries` | number | Number of unique countries parsed |
+| `totalParsed` | number | Total price rows parsed from the XLSX |
+| `durationMs` | number | Total execution time in milliseconds |
+
+### Response (failure)
+
+```json
+{
+  "ok": false,
+  "error": "Error: EC Oil Bulletin HTTP 503",
+  "durationMs": 31000
+}
+```
+
+Returns status 502. The error is also logged in the `refresh_log` table for monitoring.
+
+### Schedule
+
+Configured in `vercel.json`:
+
+```json
+{
+  "crons": [
+    {
+      "path": "/api/prices/refresh",
+      "schedule": "0 14 * * 1"
+    }
+  ]
+}
+```
+
+Runs every **Monday at 14:00 UTC**. The EC Oil Bulletin is typically updated on Monday mornings, so this timing allows the data to be available before the refresh.
 
 ---
 

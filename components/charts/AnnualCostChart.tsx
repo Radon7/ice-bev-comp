@@ -1,5 +1,6 @@
 'use client';
 
+import { Typography } from '@mui/material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface Props {
@@ -27,7 +28,7 @@ export default function AnnualCostChart({ annualEnergyCost, horizonYears }: Prop
 
   return (
     <div>
-      <h3 className="text-sm font-semibold mb-2">Projected Annual Fuel/Energy Cost (Median)</h3>
+      <Typography variant="subtitle2" gutterBottom>Projected Annual Fuel/Energy Cost (Median)</Typography>
       <ResponsiveContainer width="100%" height={250}>
         <LineChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
           <CartesianGrid strokeDasharray="3 3" opacity={0.3} />

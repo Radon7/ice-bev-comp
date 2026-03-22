@@ -4,8 +4,10 @@ import { getPrices, getLatestDate, upsertPrices } from '@/lib/price-store';
 import { fetchAllECPrices, fetchCountryPrices } from '@/lib/ec-fetcher';
 import { EU_COUNTRIES } from '@/lib/eurostat-fetcher';
 import { HISTORICAL_PRICES } from '@/lib/historical-data';
+import { authenticateRequest } from '@/lib/api-auth';
 
 const VALID_COUNTRIES = new Set(EU_COUNTRIES);
+const CACHE_HEADERS = { 'Cache-Control': 'public, max-age=3600, s-maxage=86400' };
 
 /** Maximum data age before we consider it stale and attempt a live refresh. */
 const STALE_DAYS = 8;
@@ -28,6 +30,10 @@ function isStale(latestDate: string | null): boolean {
  *  3. Embedded historical data (Italy only, last resort)
  */
 export async function GET(request: NextRequest) {
+  // Authenticate external requests (same-origin bypasses auth)
+  const authError = await authenticateRequest(request);
+  if (authError) return authError;
+
   const country = request.nextUrl.searchParams.get('country')?.toUpperCase() || 'IT';
 
   if (!VALID_COUNTRIES.has(country)) {
@@ -50,7 +56,7 @@ export async function GET(request: NextRequest) {
         country,
         count: prices.length,
         prices,
-      });
+      }, { headers: CACHE_HEADERS });
     }
   } catch {
     // DB unavailable — fall through to tier 2
@@ -73,7 +79,7 @@ export async function GET(request: NextRequest) {
           country,
           count: prices.length,
           prices,
-        });
+        }, { headers: CACHE_HEADERS });
       }
     } else {
       // For other countries, we need to fetch + parse all and then filter
@@ -111,7 +117,7 @@ export async function GET(request: NextRequest) {
           country,
           count: prices.length,
           prices,
-        });
+        }, { headers: CACHE_HEADERS });
       }
     }
   } catch {
@@ -127,7 +133,7 @@ export async function GET(request: NextRequest) {
       country,
       count: HISTORICAL_PRICES.length,
       prices: HISTORICAL_PRICES,
-    });
+    }, { headers: CACHE_HEADERS });
   }
 
   return NextResponse.json(

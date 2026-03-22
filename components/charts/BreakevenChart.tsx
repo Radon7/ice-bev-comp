@@ -17,7 +17,7 @@ export default function BreakevenChart({ breakeven, currentKm }: Props) {
 
   return (
     <div>
-      <h3 className="text-sm font-semibold mb-2">EV Win Rate by Annual Driving Distance</h3>
+      <h3 className="text-sm font-medium mb-2">EV Win Rate by Annual Driving Distance</h3>
       <ResponsiveContainer width="100%" height={250}>
         <BarChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
           <CartesianGrid strokeDasharray="3 3" opacity={0.3} />

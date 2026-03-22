@@ -7,65 +7,65 @@ interface Props {
 
 function WinBar({ rate }: { rate: number }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+    <div className="flex items-center gap-2 min-w-[140px]">
+      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
         <div
-          className="h-2 rounded-full transition-all"
-          style={{
-            width: `${Math.min(rate, 100)}%`,
-            backgroundColor: rate > 50 ? '#4CAF50' : '#EF4444',
-          }}
+          className={`h-full rounded-full transition-all ${rate > 50 ? 'bg-emerald-500' : 'bg-red-500'}`}
+          style={{ width: `${Math.min(rate, 100)}%` }}
         />
       </div>
-      <span className="text-xs font-mono w-10">{rate.toFixed(0)}%</span>
+      <span className="text-xs font-mono min-w-[32px]">{rate.toFixed(0)}%</span>
+    </div>
+  );
+}
+
+function SensSection({ title, subtitle, rows, formatPrice }: {
+  title: string;
+  subtitle: string;
+  rows: { price: number; winRate: number }[];
+  formatPrice: (p: number) => string;
+}) {
+  return (
+    <div>
+      <h3 className="text-sm font-medium mb-1">{title}</h3>
+      <p className="text-xs text-muted-foreground mb-3">{subtitle}</p>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border">
+            <th className="text-left py-1.5 font-medium text-muted-foreground">
+              {title.includes('Purchase') ? 'EV Price' : 'Elec. Price'}
+            </th>
+            <th className="text-left py-1.5 font-medium text-muted-foreground">Win Rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(row => (
+            <tr key={row.price} className="border-b border-border/50">
+              <td className="py-1.5 font-mono text-xs">{formatPrice(row.price)}</td>
+              <td className="py-1.5"><WinBar rate={row.winRate} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
 export default function SensitivityTable({ sensitivityEvPrice, sensitivityElecPrice }: Props) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div>
-        <h3 className="text-sm font-semibold mb-2">EV Purchase Price Sensitivity</h3>
-        <p className="text-xs text-gray-500 mb-2">% of simulations where EV beats gasoline</p>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-left">
-              <th className="py-1">EV Price</th>
-              <th className="py-1">Win Rate</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sensitivityEvPrice.map(row => (
-              <tr key={row.price} className="border-b border-gray-100 dark:border-gray-800">
-                <td className="py-1 font-mono">{`€${row.price.toLocaleString()}`}</td>
-                <td className="py-1"><WinBar rate={row.winRate} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div>
-        <h3 className="text-sm font-semibold mb-2">Electricity Price Sensitivity</h3>
-        <p className="text-xs text-gray-500 mb-2">% of simulations where EV beats gasoline</p>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-left">
-              <th className="py-1">Elec. Price</th>
-              <th className="py-1">Win Rate</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sensitivityElecPrice.map(row => (
-              <tr key={row.price} className="border-b border-gray-100 dark:border-gray-800">
-                <td className="py-1 font-mono">{`€${row.price.toFixed(2)}/kWh`}</td>
-                <td className="py-1"><WinBar rate={row.winRate} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <SensSection
+        title="EV Purchase Price Sensitivity"
+        subtitle="% of simulations where EV beats gasoline"
+        rows={sensitivityEvPrice}
+        formatPrice={(p) => `€${p.toLocaleString()}`}
+      />
+      <SensSection
+        title="Electricity Price Sensitivity"
+        subtitle="% of simulations where EV beats gasoline"
+        rows={sensitivityElecPrice}
+        formatPrice={(p) => `€${p.toFixed(2)}/kWh`}
+      />
     </div>
   );
 }
